@@ -6,18 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
-
-// Mock admin credentials
-const ADMIN_CREDENTIALS = [
-  {
-    email: "efraemfllanda@asscat.edu.ph",
-    password: "efraemllanda123",
-  },
-  {
-    email: "cherrylviscaya@asscat.edu.ph",
-    password: "cherryviscaya123",
-  },
-];
+import { auth } from "@/lib/auth";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -30,30 +19,31 @@ export default function Login() {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate API call delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      const response = await auth.login(email, password);
 
-    const isValidCredentials = ADMIN_CREDENTIALS.some(
-      (admin) => admin.email === email && admin.password === password
-    );
-
-    if (isValidCredentials) {
-      // Store user session (in a real app, this would be a JWT token)
-      localStorage.setItem("isAuthenticated", "true");
-      toast({
-        title: "Success",
-        description: "Welcome back!",
-      });
-      navigate("/dashboard");
-    } else {
+      if (response.success) {
+        toast({
+          title: "Success",
+          description: "Welcome back!",
+        });
+        navigate("/dashboard");
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: response.message,
+        });
+      }
+    } catch (error) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Invalid email or password",
+        description: "An unexpected error occurred",
       });
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   return (

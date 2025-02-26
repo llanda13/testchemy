@@ -1,8 +1,23 @@
 
-import { Bell, Settings } from "lucide-react";
+import { Bell, LogOut, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { auth } from "@/lib/auth";
+import { useNavigate } from "react-router-dom";
+import { useToast } from "@/components/ui/use-toast";
 
 export function TopNav() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const handleLogout = () => {
+    auth.logout();
+    toast({
+      title: "Logged out",
+      description: "You have been successfully logged out",
+    });
+    navigate("/");
+  };
+
   return (
     <header className="h-16 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-full items-center justify-between">
@@ -15,6 +30,9 @@ export function TopNav() {
           </Button>
           <Button variant="ghost" size="icon">
             <Settings className="h-5 w-5" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={handleLogout}>
+            <LogOut className="h-5 w-5" />
           </Button>
         </div>
       </div>
