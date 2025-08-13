@@ -1,4 +1,5 @@
-
+import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -6,7 +7,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { BookOpen, Brain, FileCheck } from "lucide-react";
+import { BookOpen, Brain, FileCheck, LogOut } from "lucide-react";
+import { auth } from "@/lib/auth";
+import { useToast } from "@/components/ui/use-toast";
 
 const stats = [
   {
@@ -30,13 +33,31 @@ const stats = [
 ];
 
 const Dashboard = () => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const handleLogout = () => {
+    auth.logout();
+    toast({
+      title: "Logged out",
+      description: "You have been successfully logged out.",
+    });
+    navigate("/");
+  };
+
   return (
-    <div className="animate-slide-up space-y-8">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-        <p className="text-muted-foreground">
-          Overview of your question bank and test generation stats.
-        </p>
+    <div className="min-h-screen bg-background p-8">
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+          <p className="text-muted-foreground">
+            Overview of your question bank and test generation stats.
+          </p>
+        </div>
+        <Button variant="outline" onClick={handleLogout}>
+          <LogOut className="mr-2 h-4 w-4" />
+          Logout
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

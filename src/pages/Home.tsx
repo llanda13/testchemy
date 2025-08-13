@@ -12,9 +12,14 @@ export default function Home() {
         Welcome to AI Text Bank, your intelligent solution for test questionnaire
         generation and management.
       </p>
-      <Button size="lg" onClick={() => navigate("/login")}>
-        Get Started
-      </Button>
+      <div className="space-x-4">
+        <Button size="lg" onClick={() => navigate("/login")}>
+          Login
+        </Button>
+        <Button size="lg" variant="outline" onClick={() => navigate("/login")}>
+          Get Started
+        </Button>
+      </div>
     </div>
   );
 }

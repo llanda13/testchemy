@@ -10,7 +10,7 @@ interface AuthResponse {
   token?: string;
 }
 
-// Mock admin credentials
+// Admin credentials as specified
 const ADMIN_CREDENTIALS: Admin[] = [
   {
     email: "efraemfllanda@asscat.edu.ph",
