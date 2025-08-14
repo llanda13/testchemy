@@ -26,7 +26,7 @@ interface AIApprovalWorkflowProps {
   onBack: () => void;
 }
 
-export default function AIApprovalWorkflow({ onBack }: AIApprovalWorkflowProps) {
+function AIApprovalWorkflow({ onBack }: AIApprovalWorkflowProps) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -204,3 +204,5 @@ export default function AIApprovalWorkflow({ onBack }: AIApprovalWorkflowProps) 
     </div>
   );
 }
+
+export default AIApprovalWorkflow;
