@@ -14,33 +14,86 @@ export type Database = {
   }
   public: {
     Tables: {
+      essay_scores: {
+        Row: {
+          created_at: string | null
+          graded_by: string | null
+          id: string
+          question_id: string | null
+          scores: Json
+          student_id: string
+          student_name: string | null
+          total: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          graded_by?: string | null
+          id?: string
+          question_id?: string | null
+          scores?: Json
+          student_id: string
+          student_name?: string | null
+          total?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          graded_by?: string | null
+          id?: string
+          question_id?: string | null
+          scores?: Json
+          student_id?: string
+          student_name?: string | null
+          total?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "essay_scores_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       generated_tests: {
         Row: {
           answer_key: Json
           created_at: string | null
+          created_by: string | null
           id: string
           instructions: string | null
           items: Json
+          title: string | null
           tos_id: string | null
+          version_count: number | null
           version_label: string | null
+          versions: Json | null
         }
         Insert: {
           answer_key: Json
           created_at?: string | null
+          created_by?: string | null
           id?: string
           instructions?: string | null
           items: Json
+          title?: string | null
           tos_id?: string | null
+          version_count?: number | null
           version_label?: string | null
+          versions?: Json | null
         }
         Update: {
           answer_key?: Json
           created_at?: string | null
+          created_by?: string | null
           id?: string
           instructions?: string | null
           items?: Json
+          title?: string | null
           tos_id?: string | null
+          version_count?: number | null
           version_label?: string | null
+          versions?: Json | null
         }
         Relationships: [
           {
@@ -111,6 +164,30 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          full_name: string | null
+          id: string
+          role: string
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id: string
+          role?: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          role?: string
+        }
+        Relationships: []
+      }
       question_rubrics: {
         Row: {
           created_at: string | null
@@ -161,6 +238,7 @@ export type Database = {
           approved_by: string | null
           bloom_level: string
           choices: Json | null
+          confidence_score: number | null
           correct_answer: string | null
           created_at: string
           created_by: string
@@ -168,10 +246,12 @@ export type Database = {
           id: string
           knowledge_dimension: string
           needs_review: boolean | null
+          owner: string | null
           question_text: string
           question_type: string
           topic: string
           updated_at: string
+          used_history: Json | null
         }
         Insert: {
           ai_confidence_score?: number | null
@@ -181,6 +261,7 @@ export type Database = {
           approved_by?: string | null
           bloom_level: string
           choices?: Json | null
+          confidence_score?: number | null
           correct_answer?: string | null
           created_at?: string
           created_by?: string
@@ -188,10 +269,12 @@ export type Database = {
           id?: string
           knowledge_dimension: string
           needs_review?: boolean | null
+          owner?: string | null
           question_text: string
           question_type: string
           topic: string
           updated_at?: string
+          used_history?: Json | null
         }
         Update: {
           ai_confidence_score?: number | null
@@ -201,6 +284,7 @@ export type Database = {
           approved_by?: string | null
           bloom_level?: string
           choices?: Json | null
+          confidence_score?: number | null
           correct_answer?: string | null
           created_at?: string
           created_by?: string
@@ -208,10 +292,12 @@ export type Database = {
           id?: string
           knowledge_dimension?: string
           needs_review?: boolean | null
+          owner?: string | null
           question_text?: string
           question_type?: string
           topic?: string
           updated_at?: string
+          used_history?: Json | null
         }
         Relationships: []
       }
@@ -523,19 +609,52 @@ export type Database = {
           },
         ]
       }
+      tos_collaborators: {
+        Row: {
+          can_edit: boolean | null
+          invited_at: string | null
+          tos_id: string
+          user_id: string
+        }
+        Insert: {
+          can_edit?: boolean | null
+          invited_at?: string | null
+          tos_id: string
+          user_id: string
+        }
+        Update: {
+          can_edit?: boolean | null
+          invited_at?: string | null
+          tos_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tos_collaborators_tos_id_fkey"
+            columns: ["tos_id"]
+            isOneToOne: false
+            referencedRelation: "tos_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tos_entries: {
         Row: {
           course: string
           created_at: string
           created_by: string
           description: string
+          distribution: Json | null
           exam_period: string
           id: string
+          matrix: Json | null
           noted_by: string
+          owner: string | null
           prepared_by: string
           school_year: string
           subject_no: string
           title: string
+          topics: Json | null
           total_items: number
           updated_at: string
           year_section: string
@@ -545,13 +664,17 @@ export type Database = {
           created_at?: string
           created_by?: string
           description: string
+          distribution?: Json | null
           exam_period: string
           id?: string
+          matrix?: Json | null
           noted_by: string
+          owner?: string | null
           prepared_by: string
           school_year: string
           subject_no: string
           title: string
+          topics?: Json | null
           total_items: number
           updated_at?: string
           year_section: string
@@ -561,13 +684,17 @@ export type Database = {
           created_at?: string
           created_by?: string
           description?: string
+          distribution?: Json | null
           exam_period?: string
           id?: string
+          matrix?: Json | null
           noted_by?: string
+          owner?: string | null
           prepared_by?: string
           school_year?: string
           subject_no?: string
           title?: string
+          topics?: Json | null
           total_items?: number
           updated_at?: string
           year_section?: string
@@ -582,6 +709,16 @@ export type Database = {
       assign_admin_role: {
         Args: { user_email: string }
         Returns: undefined
+      }
+      get_user_question_stats: {
+        Args: { user_uuid: string }
+        Returns: {
+          approved_count: number
+          bloom_level: string
+          count: number
+          difficulty: string
+          knowledge_dimension: string
+        }[]
       }
     }
     Enums: {
