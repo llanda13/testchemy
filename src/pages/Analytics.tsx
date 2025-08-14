@@ -1,9 +1,9 @@
 import { Layout } from "@/components/layout/Layout";
-import { AnalyticsCharts } from "@/components/AnalyticsCharts";
+import AnalyticsCharts from "@/components/AnalyticsCharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AIApprovalWorkflow } from "@/components/AIApprovalWorkflow";
-import { CollaborativeDocumentManager } from "@/components/CollaborativeDocumentManager";
-import { MultiVersionTestGenerator } from "@/components/MultiVersionTestGenerator";
+import AIApprovalWorkflow from "@/components/AIApprovalWorkflow";
+// import CollaborativeDocumentManager from "@/components/CollaborativeDocumentManager";
+import MultiVersionTestGenerator from "@/components/MultiVersionTestGenerator";
 import { 
   BarChart3, 
   CheckCircle, 
@@ -47,15 +47,18 @@ export default function Analytics() {
           </TabsContent>
 
           <TabsContent value="approval">
-            <AIApprovalWorkflow />
+            <AIApprovalWorkflow onBack={() => {}} />
           </TabsContent>
 
           <TabsContent value="collaboration">
-            <CollaborativeDocumentManager />
+            <div className="text-center p-8">
+              <h3 className="text-lg font-semibold mb-2">Collaborative Document Manager</h3>
+              <p className="text-muted-foreground">Real-time collaboration features coming soon</p>
+            </div>
           </TabsContent>
 
           <TabsContent value="versions">
-            <MultiVersionTestGenerator />
+            <MultiVersionTestGenerator onBack={() => {}} />
           </TabsContent>
         </Tabs>
       </div>

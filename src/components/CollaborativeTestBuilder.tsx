@@ -184,9 +184,9 @@ export const CollaborativeTestBuilder: React.FC<CollaborativeTestBuilderProps> =
                 {showCollaboration && (
                   <div className="mt-4">
                     <CollaborationIndicator
-                      isActive={true}
-                      activeUsers={[{ name: "Teacher", email: "teacher@example.com" }]}
-                      documentTitle={testConfig.title || "Untitled Test"}
+                      users={[{ id: "1", name: "Teacher", email: "teacher@example.com", color: "#3b82f6" }]}
+                      isConnected={true}
+                      currentUser={{ id: "1", name: "Teacher", email: "teacher@example.com", color: "#3b82f6" }}
                     />
                   </div>
                 )}

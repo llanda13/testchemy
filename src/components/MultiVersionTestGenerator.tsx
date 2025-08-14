@@ -114,9 +114,8 @@ export default function MultiVersionTestGenerator({ onBack }: MultiVersionTestGe
       const { error } = await supabase
         .from('generated_tests')
         .insert({
-          version_label: version.version,
-          items: version.questions,
-          answer_key: version.answerKey,
+          items: JSON.stringify(version.questions) as any,
+          answer_key: JSON.stringify(version.answerKey) as any,
           instructions: `Test Version ${version.version}`
         });
 
