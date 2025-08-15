@@ -233,17 +233,22 @@ export default function EnhancedQuestionBank({ onBack }: EnhancedQuestionBankPro
   };
 
   if (showBulkImport) {
-    return <BulkImport />;
+    return <BulkImport onClose={() => setShowBulkImport(false)} onImportComplete={fetchQuestions} />;
   }
 
   if (showQuestionForm) {
     return (
       <QuestionForm 
-        onBack={() => {
+        onSave={() => {
+          setShowQuestionForm(false);
+          setEditingQuestion(null);
+          fetchQuestions();
+        }}
+        onCancel={() => {
           setShowQuestionForm(false);
           setEditingQuestion(null);
         }}
-        question={editingQuestion}
+        existingQuestion={editingQuestion}
       />
     );
   }
@@ -418,7 +423,7 @@ export default function EnhancedQuestionBank({ onBack }: EnhancedQuestionBankPro
                       <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                         {Object.entries(question.choices).map(([key, value]) => (
                           <div key={key} className={question.correct_answer === key ? 'font-medium text-green-600' : ''}>
-                            {key}. {value}
+                            {key}. {String(value)}
                           </div>
                         ))}
                       </div>

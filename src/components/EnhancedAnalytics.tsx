@@ -101,7 +101,7 @@ export default function EnhancedAnalytics({ onBack }: EnhancedAnalyticsProps) {
         count,
       percentage: questions.length > 0 ? ((count as number) / questions.length * 100).toFixed(1) : '0'
       }))
-      .sort((a, b) => b.count - a.count)
+      .sort((a, b) => (b.count as number) - (a.count as number))
       .slice(0, 10); // Top 10 topics
 
     // Knowledge dimension distribution
