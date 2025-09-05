@@ -19,10 +19,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Questions } from "@/services/db/questions";
+import { supabase } from "@/lib/supabaseClient";
 import { useRealtimeQuestions } from "@/hooks/useRealtimeQuestions";
 import { useRealtime } from "@/hooks/useRealtime";
 import { usePresence } from "@/hooks/usePresence";
-import { useState } from "react";
+
 
 
 interface AIApprovalWorkflowProps {
@@ -39,7 +40,7 @@ export const AIApprovalWorkflow = ({ onBack }: AIApprovalWorkflowProps) => {
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState<number>(0);
-  const [setRejectionReasons] = useState<Record<string, string>>({});
+  
 
   // Real-time collaboration for approval workflow
   const { users: reviewers, isConnected } = usePresence('ai-approval', {
@@ -83,16 +84,7 @@ export const AIApprovalWorkflow = ({ onBack }: AIApprovalWorkflowProps) => {
       
       await actions.toggleApproval(questionId, true, notes);
 
-      // Log approval activity
-      await supabase.from("activity_log").insert({
-        action: 'approve_question',
-        entity_type: 'question', 
-        entity_id: questionId,
-        meta: { 
-          reason: notes,
-          confidence_before: questions.find(q => q.id === questionId)?.ai_confidence_score 
-        }
-      });
+      // Log approval activity (skipped for now as activity_log table is not in current schema)
 
       toast.success("Question approved and added to the question bank");
       
@@ -114,16 +106,7 @@ export const AIApprovalWorkflow = ({ onBack }: AIApprovalWorkflowProps) => {
     try {
       const notes = rejectionReasons[questionId] || "Question rejected during admin review";
       
-      // Log rejection before deletion
-      await supabase.from("activity_log").insert({
-        action: 'reject_question',
-        entity_type: 'question',
-        entity_id: questionId,
-        meta: { 
-          reason: notes,
-          question_text: questions.find(q => q.id === questionId)?.question_text?.substring(0, 100)
-        }
-      });
+      // Log rejection before deletion (skipped for now as activity_log table is not in current schema)
       
       await actions.deleteQuestion(questionId);
 
@@ -592,7 +575,7 @@ export const AIApprovalWorkflow = ({ onBack }: AIApprovalWorkflowProps) => {
                     <Textarea
                       placeholder="Add notes about this question or reason for rejection..."
                       value={rejectionReasons[question.id!] || ""}
-                      onChange={(e) => setRejectionReason(prev => ({
+                      onChange={(e) => setRejectionReasons(prev => ({
                         ...prev,
                         [question.id!]: e.target.value
                       }))}
