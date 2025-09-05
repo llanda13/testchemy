@@ -146,7 +146,7 @@ export const EssayGradingInterface: React.FC<EssayGradingInterfaceProps> = ({ on
   };
 
   const filteredResponses = responses.filter(response => {
-    const matchesQuestion = !selectedQuestion || response.question_id === selectedQuestion;
+    const matchesQuestion = !selectedQuestion || selectedQuestion === "all" || response.question_id === selectedQuestion;
     const matchesStatus = filterStatus === 'all' || 
                          (filterStatus === 'graded' && response.graded) ||
                          (filterStatus === 'ungraded' && !response.graded);
@@ -322,7 +322,7 @@ export const EssayGradingInterface: React.FC<EssayGradingInterfaceProps> = ({ on
                   <SelectValue placeholder="All Questions" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Questions</SelectItem>
+                  <SelectItem value="all">All Questions</SelectItem>
                   {questions.map((question) => (
                     <SelectItem key={question.id} value={question.id}>
                       {question.question_text.substring(0, 50)}...

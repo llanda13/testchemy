@@ -59,15 +59,15 @@ export default function EnhancedQuestionBank({ onBack }: EnhancedQuestionBankPro
       );
     }
 
-    if (selectedTopic) {
+    if (selectedTopic && selectedTopic !== "all") {
       filtered = filtered.filter(q => q.topic === selectedTopic);
     }
 
-    if (selectedBloomLevel) {
+    if (selectedBloomLevel && selectedBloomLevel !== "all") {
       filtered = filtered.filter(q => q.bloom_level === selectedBloomLevel);
     }
 
-    if (selectedDifficulty) {
+    if (selectedDifficulty && selectedDifficulty !== "all") {
       filtered = filtered.filter(q => q.difficulty === selectedDifficulty);
     }
 
@@ -335,7 +335,7 @@ export default function EnhancedQuestionBank({ onBack }: EnhancedQuestionBankPro
                 <SelectValue placeholder="Filter by topic" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Topics</SelectItem>
+                <SelectItem value="all">All Topics</SelectItem>
                 {topics.map(topic => (
                   <SelectItem key={topic} value={topic}>{topic}</SelectItem>
                 ))}
@@ -346,7 +346,7 @@ export default function EnhancedQuestionBank({ onBack }: EnhancedQuestionBankPro
                 <SelectValue placeholder="Filter by Bloom's level" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Levels</SelectItem>
+                <SelectItem value="all">All Levels</SelectItem>
                 {bloomLevels.map(level => (
                   <SelectItem key={level} value={level}>{level}</SelectItem>
                 ))}
@@ -357,7 +357,7 @@ export default function EnhancedQuestionBank({ onBack }: EnhancedQuestionBankPro
                 <SelectValue placeholder="Filter by difficulty" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Difficulties</SelectItem>
+                <SelectItem value="all">All Difficulties</SelectItem>
                 {difficulties.map(difficulty => (
                   <SelectItem key={difficulty} value={difficulty}>{difficulty}</SelectItem>
                 ))}
