@@ -151,7 +151,7 @@ export const MultiVersionTestGenerator = ({ onBack }: MultiVersionTestGeneratorP
     }
 
     // Check balance
-    const { warnings } = validateVersionBalance(selectedQuestions, testConfig as any);
+    const { warnings } = validateVersionBalance(selectedQuestions, testConfig);
     setGenerationWarnings(warnings);
 
     setIsGenerating(true);

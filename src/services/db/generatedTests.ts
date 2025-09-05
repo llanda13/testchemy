@@ -1,8 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
 export interface GeneratedTest {
-  id?: string;
-  tos_id?: string;
+  id: string;
   title: string;
   subject: string;
   course?: string;
@@ -10,25 +9,14 @@ export interface GeneratedTest {
   exam_period?: string;
   school_year?: string;
   instructions?: string;
+  tos_id?: string;
   time_limit?: number;
-  points_per_question: number;
+  points_per_question?: number;
   num_versions: number;
-  versions: Array<{
-    label: string;
-    items: Array<{
-      id: string;
-      order: number;
-      question_id: string;
-      choices?: Record<string, string>;
-      correct_answer?: string;
-    }>;
-  }>;
-  answer_keys: Array<{
-    label: string;
-    keys: Array<{ number: number; answer: string }>;
-  }>;
-  shuffle_questions: boolean;
-  shuffle_choices: boolean;
+  versions: any[];
+  answer_keys: any[];
+  shuffle_questions?: boolean;
+  shuffle_choices?: boolean;
   created_by?: string;
   created_at?: string;
 }
@@ -63,9 +51,11 @@ export const GeneratedTests = {
   },
 
   async list() {
+    const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from("generated_tests")
       .select("*")
+      .eq("created_by", user?.id)
       .order("created_at", { ascending: false });
     
     if (error) throw error;
@@ -91,26 +81,5 @@ export const GeneratedTests = {
       .eq("id", id);
     
     if (error) throw error;
-  },
-
-  async getVersions(testId: string) {
-    const test = await this.getById(testId);
-    return test.versions || [];
-  },
-
-  async getAnswerKeys(testId: string) {
-    const test = await this.getById(testId);
-    return test.answer_keys || [];
-  },
-
-  async getTestsByTOS(tosId: string) {
-    const { data, error } = await supabase
-      .from("generated_tests")
-      .select("*")
-      .eq("tos_id", tosId)
-      .order("created_at", { ascending: false });
-    
-    if (error) throw error;
-    return data ?? [];
   }
 };

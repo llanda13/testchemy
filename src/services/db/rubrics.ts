@@ -30,10 +30,12 @@ export interface RubricScore {
 }
 
 export const Rubrics = {
-  async create(payload: Omit<Rubric, 'id' | 'created_at'>) {
+  async create(name: string, criteria: any[]) {
     const { data: { user } } = await supabase.auth.getUser();
     const rubricData = {
-      ...payload,
+      name,
+      criteria,
+      total_max: criteria.reduce((sum, c) => sum + c.max_points, 0),
       created_by: user?.id
     };
     
@@ -99,7 +101,7 @@ export const Rubrics = {
     return this.getByQuestion(questionId);
   },
 
-  async attachToQuestion(rubricId: string, questionId: string) {
+  async attachToQuestion(questionId: string, rubricId: string) {
     return this.update(rubricId, { question_id: questionId });
   },
 
