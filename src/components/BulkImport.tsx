@@ -296,9 +296,22 @@ export default function BulkImport({
       setProgress(80);
       setCurrentStep('Saving to database...');
 
-      // Insert into database
-      const insertedQuestions = await Questions.bulkInsert(normalizedData);
+      // Ensure all required fields are present
+      const questionsWithDefaults = normalizedData.map(q => ({
+        ...q,
+        bloom_level: q.bloom_level || 'understanding',
+        difficulty: q.difficulty || 'average',
+        knowledge_dimension: q.knowledge_dimension || 'conceptual',
+        question_type: q.question_type as 'mcq' | 'true_false' | 'essay' | 'short_answer',
+        created_by: q.created_by as 'teacher' | 'ai' | 'bulk_import',
+        correct_answer: q.correct_answer || '',
+        approved: false,
+        ai_confidence_score: q.ai_confidence_score || 0.5,
+        needs_review: q.needs_review !== false
+      }));
 
+      // Insert into database
+      const insertedQuestions = await Questions.bulkInsert(questionsWithDefaults);
 
       setProgress(100);
       setCurrentStep('Import completed!');

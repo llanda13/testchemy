@@ -14,7 +14,8 @@ import {
   Activity,
   Clock,
   Eye,
-  Edit
+  Edit,
+  Plus
 } from 'lucide-react';
 import { usePresence } from '@/hooks/usePresence';
 import { useRealtime } from '@/hooks/useRealtime';
@@ -79,14 +80,23 @@ export const RealTimeCollaborationPanel: React.FC<RealTimeCollaborationPanelProp
   const loadMessages = async () => {
     try {
       const { data, error } = await supabase
-        .from('collaboration_messages')
+        .from('document_activity')
         .select('*')
         .eq('document_id', documentId)
         .order('timestamp', { ascending: false })
         .limit(20);
 
       if (error) throw error;
-      setMessages(data || []);
+      // For now, convert activity to message format
+      const convertedMessages = (data || []).map(activity => ({
+        id: activity.id,
+        user_name: activity.user_name,
+        user_email: activity.user_email,
+        message: `${activity.action_type}: ${activity.action_details || 'Document update'}`,
+        timestamp: activity.timestamp,
+        document_id: activity.document_id
+      }));
+      setMessages(convertedMessages);
     } catch (error) {
       console.error('Error loading messages:', error);
     }
@@ -113,13 +123,14 @@ export const RealTimeCollaborationPanel: React.FC<RealTimeCollaborationPanelProp
 
     try {
       const { error } = await supabase
-        .from('collaboration_messages')
+        .from('document_activity')
         .insert([{
           document_id: documentId,
           document_type: documentType,
           user_name: currentUser.name,
           user_email: currentUser.email,
-          message: newMessage.trim()
+          action_type: 'message',
+          action_details: newMessage.trim()
         }]);
 
       if (error) throw error;

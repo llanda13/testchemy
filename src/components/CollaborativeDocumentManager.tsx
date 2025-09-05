@@ -386,7 +386,8 @@ export const CollaborativeDocumentManager: React.FC<CollaborativeDocumentManager
                       onClick={() => removeCollaborator(collaborator.id)}
                       className="h-8 w-8 p-0"
                     >
-                      <X className="w-3 h-3" />
+                      {/* Remove icon - using span as placeholder */}
+                      <span className="w-3 h-3">×</span>
                     </Button>
                   )}
                 </div>
