@@ -3,6 +3,7 @@ import { GraduationCap, Menu, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useRealtime } from "@/hooks/useRealtime";
 import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 interface HeaderProps {
   isAuthenticated?: boolean;

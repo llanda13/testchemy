@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useProfile } from "@/hooks/useProfile";
 import { useRealtimeQuestions } from "@/hooks/useRealtimeQuestions";
 import { Question, getQuestions, deleteQuestion, approveQuestion, bulkInsertQuestions } from "@/lib/supabaseClient";
-import { classifyQuestions } from "@/lib/classify";
+import { classifyQuestionsBatch } from "@/lib/classify";
 import BulkImport from "./BulkImport";
 import { QuestionForm } from "./QuestionForm";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,11 +34,13 @@ export default function EnhancedQuestionBank({ onBack }: EnhancedQuestionBankPro
   
   const { toast } = useToast();
   const { profile, isAdmin } = useProfile();
-  const { questions: realtimeQuestions, setQuestions: setRealtimeQuestions } = useRealtimeQuestions(questions);
+  const { questions: realtimeQuestions } = useRealtimeQuestions();
 
   // Sync realtime questions with local state
   useEffect(() => {
-    setQuestions(realtimeQuestions);
+    if (realtimeQuestions.length > 0) {
+      setQuestions(realtimeQuestions);
+    }
   }, [realtimeQuestions]);
 
   // Load questions on mount
@@ -81,7 +83,6 @@ export default function EnhancedQuestionBank({ onBack }: EnhancedQuestionBankPro
       setLoading(true);
       const data = await getQuestions();
       setQuestions(data);
-      setRealtimeQuestions(data);
     } catch (error) {
       toast({
         title: "Error",
@@ -148,7 +149,7 @@ export default function EnhancedQuestionBank({ onBack }: EnhancedQuestionBankPro
         }
       }));
 
-      const classifications = classifyQuestions(questionsToClassify);
+      const classifications = classifyQuestionsBatch(questionsToClassify);
 
       const questionsToInsert = csvData.map((row, index) => {
         const classification = classifications[index];
@@ -168,7 +169,8 @@ export default function EnhancedQuestionBank({ onBack }: EnhancedQuestionBankPro
           knowledge_dimension: classification?.knowledge_dimension || 'Conceptual',
           created_by: 'teacher',
           approved: false,
-          confidence_score: classification?.confidence_score || 0.5
+          ai_confidence_score: classification?.confidence || 0.5,
+          needs_review: classification?.confidence < 0.8
         };
       });
 

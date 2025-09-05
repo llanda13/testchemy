@@ -289,6 +289,51 @@ export const Analytics = {
     
     if (error) throw error;
     return data;
+  },
+
+  creatorStats: async () => {
+    const { data, error } = await supabase
+      .from('questions')
+      .select('created_by')
+      .then(({ data, error }) => {
+        if (error) throw error;
+        const counts = data?.reduce((acc: any, item: any) => {
+          acc[item.created_by] = (acc[item.created_by] || 0) + 1;
+          return acc;
+        }, {}) || {};
+        return Object.entries(counts).map(([created_by, count]) => ({ created_by, count }));
+      });
+    return data;
+  },
+  
+  approvalStats: async () => {
+    const { data, error } = await supabase
+      .from('questions') 
+      .select('approved')
+      .then(({ data, error }) => {
+        if (error) throw error;
+        const counts = data?.reduce((acc: any, item: any) => {
+          acc[item.approved] = (acc[item.approved] || 0) + 1;
+          return acc;
+        }, {}) || {};
+        return Object.entries(counts).map(([approved, count]) => ({ approved, count }));
+      });
+    return data;
+  },
+  
+  topicCounts: async () => {
+    const { data, error } = await supabase
+      .from('questions')
+      .select('topic')
+      .then(({ data, error }) => {
+        if (error) throw error;
+        const counts = data?.reduce((acc: any, item: any) => {
+          acc[item.topic] = (acc[item.topic] || 0) + 1;
+          return acc;
+        }, {}) || {};
+        return Object.entries(counts).map(([topic, count]) => ({ topic, count }));
+      });
+    return data;
   }
 };
 
