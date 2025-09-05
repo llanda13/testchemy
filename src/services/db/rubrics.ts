@@ -79,6 +79,30 @@ export const Rubrics = {
     return data ?? [];
   },
 
+  async listAll() {
+    return this.list();
+  },
+
+  async listMine() {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data, error } = await supabase
+      .from("rubrics")
+      .select("*")
+      .eq("created_by", user?.id)
+      .order("created_at", { ascending: false });
+    
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async getForQuestion(questionId: string) {
+    return this.getByQuestion(questionId);
+  },
+
+  async attachToQuestion(rubricId: string, questionId: string) {
+    return this.update(rubricId, { question_id: questionId });
+  },
+
   async update(id: string, patch: Partial<Rubric>) {
     const { data, error } = await supabase
       .from("rubrics")

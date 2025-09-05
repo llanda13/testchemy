@@ -28,8 +28,8 @@ import {
   History
 } from "lucide-react";
 import { toast } from "sonner";
-import { Questions, Tests, ActivityLog } from "@/services/db";
-import { Questions as QuestionsService } from "@/services/db/questions";
+import { Questions } from "@/services/db/questions";
+import { ActivityLog } from "@/services/db/activityLog";
 import { GeneratedTests } from "@/services/db/generatedTests";
 import { generateVersions, validateVersionBalance, type TestVersion, type AnswerKey } from "@/utils/testVersions";
 import { PDFExporter } from "@/utils/exportPdf";
@@ -76,6 +76,7 @@ export const MultiVersionTestGenerator = ({ onBack }: MultiVersionTestGeneratorP
   const [selectedBloomLevel, setSelectedBloomLevel] = useState<string>("");
   const [testVersions, setTestVersions] = useState<TestVersion[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [testAnswerKeys, setTestAnswerKeys] = useState<AnswerKey[]>([]);
   const [currentPreview, setCurrentPreview] = useState<'A' | 'B' | 'C'>('A');
   const [activeTab, setActiveTab] = useState('configure');
   const [savedTestId, setSavedTestId] = useState<string | null>(null);
@@ -118,7 +119,7 @@ export const MultiVersionTestGenerator = ({ onBack }: MultiVersionTestGeneratorP
   const fetchQuestions = async () => {
     setLoading(true);
     try {
-      const data = await QuestionsService.search({ approved: true });
+      const data = await Questions.search({ approved: true });
 
       const transformedQuestions: Question[] = data.map(q => ({
         id: q.id,
@@ -127,8 +128,8 @@ export const MultiVersionTestGenerator = ({ onBack }: MultiVersionTestGeneratorP
         topic: q.topic,
         bloom_level: q.bloom_level,
         difficulty: q.difficulty,
-        choices: q.choices,
-        correct_answer: q.correct_answer,
+        choices: q.choices as any,
+        correct_answer: q.correct_answer || '',
         created_by: q.created_by
       }));
 
@@ -150,7 +151,7 @@ export const MultiVersionTestGenerator = ({ onBack }: MultiVersionTestGeneratorP
     }
 
     // Check balance
-    const { warnings } = validateVersionBalance(selectedQuestions, testConfig);
+    const { warnings } = validateVersionBalance(selectedQuestions, testConfig as any);
     setGenerationWarnings(warnings);
 
     setIsGenerating(true);
@@ -165,7 +166,7 @@ export const MultiVersionTestGenerator = ({ onBack }: MultiVersionTestGeneratorP
       });
       
       setTestVersions(versions);
-      setAnswerKeys(answerKeys);
+      setTestAnswerKeys(answerKeys);
 
       // Save to database
       const savedTest = await GeneratedTests.create({
@@ -259,7 +260,7 @@ export const MultiVersionTestGenerator = ({ onBack }: MultiVersionTestGeneratorP
       }));
       
       setTestVersions(versions);
-      setAnswerKeys(answerKeys);
+      setTestAnswerKeys(answerKeys);
       setActiveTab('preview');
       
       if (versions.length > 0) {
@@ -337,7 +338,7 @@ export const MultiVersionTestGenerator = ({ onBack }: MultiVersionTestGeneratorP
     }
   };
 
-  const { warnings } = validateVersionBalance(testVersions);
+  const { warnings } = validateVersionBalance(selectedQuestions, testConfig as any);
 
   return (
     <div className="min-h-screen bg-background">
@@ -802,16 +803,16 @@ export const MultiVersionTestGenerator = ({ onBack }: MultiVersionTestGeneratorP
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-semibold">Test Versions ({testVersions.length})</h3>
                       <div className="flex gap-2">
-                        {testVersions.map((version) => (
-                          <Button
-                            key={version.version_label}
-                            onClick={() => setCurrentPreview(version.label as 'A' | 'B' | 'C')}
-                            variant={currentPreview === version.label ? "default" : "outline"}
-                            size="sm"
-                          >
-                            Version {version.label}
-                          </Button>
-                        ))}
+                     {testVersions.map((version) => (
+                        <Button
+                          key={version.label}
+                          onClick={() => setCurrentPreview(version.label as 'A' | 'B' | 'C')}
+                          variant={currentPreview === version.label ? "default" : "outline"}
+                          size="sm"
+                        >
+                          Version {version.label}
+                        </Button>
+                      ))}
                       </div>
                     </div>
                     
@@ -856,7 +857,7 @@ export const MultiVersionTestGenerator = ({ onBack }: MultiVersionTestGeneratorP
                 {/* Test Preview */}
                 {testVersions.map((version) => (
                   <div
-                    key={version.version_label}
+                    key={version.label}
                     id={`test-version-${version.label}`}
                     className={`${currentPreview === version.label ? 'block' : 'hidden'} bg-white text-black p-8 print:p-0 rounded-lg border`}
                   >

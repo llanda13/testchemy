@@ -126,6 +126,15 @@ export const Questions = {
     return data;
   },
 
+  async search(filters: {
+    topic?: string;
+    bloom_level?: string;
+    difficulty?: string;
+    approved?: boolean;
+  } = {}): Promise<Question[]> {
+    return this.getAll(filters);
+  },
+
   async getStats() {
     const { data, error } = await supabase
       .from('questions')

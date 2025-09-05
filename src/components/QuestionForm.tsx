@@ -190,7 +190,7 @@ export const QuestionForm: React.FC<QuestionFormProps> = ({
         onSave(updatedQuestion);
       } else {
         // Create new question
-        const newQuestion = await Questions.insert(questionData);
+        const newQuestion = await Questions.create(questionData);
         toast.success('Question created successfully!');
         onSave(newQuestion);
       }

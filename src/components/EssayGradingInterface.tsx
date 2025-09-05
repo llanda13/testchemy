@@ -96,7 +96,7 @@ export const EssayGradingInterface: React.FC<EssayGradingInterfaceProps> = ({ on
         
         for (const questionId of questionIds) {
           try {
-            const rubric = await Rubrics.getForQuestion(questionId);
+            const rubric = await Rubrics.getByQuestion(questionId);
             if (rubric) {
               rubricsMap[questionId] = {
                 id: rubric.id,

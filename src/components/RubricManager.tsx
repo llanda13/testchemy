@@ -86,7 +86,7 @@ export const RubricManager = ({ onBack }: RubricManagerProps) => {
   const fetchRubrics = async () => {
     setLoading(true);
     try {
-      const data = await Rubrics.listAll();
+      const data = await Rubrics.list();
       setRubrics(data);
     } catch (error) {
       console.error('Error fetching rubrics:', error);
@@ -112,22 +112,16 @@ export const RubricManager = ({ onBack }: RubricManagerProps) => {
       }
 
       const rubric = await Rubrics.create({
-        title: formData.title,
-        description: formData.description,
-        subject: formData.subject,
-        grade_level: formData.grade_level,
-        total_points: formData.total_points,
+        name: formData.title,
         criteria: formData.criteria,
-        performance_levels: formData.performance_levels,
-        created_by: 'teacher'
+        total_max: formData.total_points
       });
       
       // Log activity
       await ActivityLog.log(
         editingRubric ? 'update_rubric' : 'create_rubric',
         'rubric',
-        rubric.id,
-        { title: formData.title }
+        rubric.id
       );
 
       toast({
