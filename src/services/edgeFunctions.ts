@@ -157,26 +157,28 @@ export class EdgeFunctions {
   }
 }
 
+export type ClassificationResult = {
+  bloom_level: string;
+  knowledge_dimension: string;
+  difficulty: "easy" | "average" | "difficult";
+  confidence: number;
+  needs_review?: boolean;
+};
+
 /**
- * Standalone export for classifyQuestions to maintain backward compatibility
- * Calls the Supabase Edge Function `classify-questions` to classify bulk questions
- * with Bloom level, Knowledge Dimension, and Difficulty.
- *
+ * Client-side wrapper that calls the Supabase Edge Function classify-questions
  * @param questions Array of objects: { text: string, type: string, topic?: string }
- * @returns Array of classification results with bloom_level, difficulty, knowledge_dimension, confidence, needs_review
+ * @returns Array of classification results
  */
 export async function classifyQuestions(
   questions: Array<{ text: string; type: string; topic?: string }>
-): Promise<Array<{
-  bloom_level: string;
-  difficulty: string;
-  knowledge_dimension: string;
-  confidence: number;
-  needs_review: boolean;
-}>> {
+): Promise<ClassificationResult[]> {
   try {
     const { data, error } = await supabase.functions.invoke('classify-questions', {
       body: questions,
+      headers: {
+        "Content-Type": "application/json",
+      },
     });
 
     if (error) {
@@ -188,7 +190,7 @@ export async function classifyQuestions(
       throw new Error('Invalid response format from classify-questions Edge Function');
     }
 
-    return data;
+    return data as ClassificationResult[];
   } catch (err) {
     console.error('Error calling classifyQuestions Edge Function:', err);
     throw err;

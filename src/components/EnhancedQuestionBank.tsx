@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useProfile } from "@/hooks/useProfile";
 import { useRealtimeQuestions } from "@/hooks/useRealtimeQuestions";
 import { Question, getQuestions, deleteQuestion, approveQuestion, bulkInsertQuestions } from "@/lib/supabaseClient";
-import { classifyQuestionsBatch } from "@/lib/classify";
+import { classifyQuestions } from "@/services/edgeFunctions";
 import BulkImport from "./BulkImport";
 import { QuestionForm } from "./QuestionForm";
 import { supabase } from "@/integrations/supabase/client";
@@ -140,16 +140,11 @@ export default function EnhancedQuestionBank({ onBack }: EnhancedQuestionBankPro
       // Classify questions automatically
       const questionsToClassify = csvData.map(row => ({
         text: row['Question Text'] || row.question_text || '',
-        topic: row.Topic || row.topic || 'General',
-        choices: row.choices ? JSON.parse(row.choices) : {
-          A: row['Choice A'] || '',
-          B: row['Choice B'] || '',
-          C: row['Choice C'] || '',
-          D: row['Choice D'] || ''
-        }
+        type: row['Question Type'] || row.question_type || 'mcq',
+        topic: row.Topic || row.topic || 'General'
       }));
 
-      const classifications = classifyQuestionsBatch(questionsToClassify);
+      const classifications = await classifyQuestions(questionsToClassify);
 
       const questionsToInsert = csvData.map((row, index) => {
         const classification = classifications[index];
