@@ -18,8 +18,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Questions } from '@/services/db/questions';
-import { classifyQuestion, batchClassify } from '@/services/ai/classify';
 import { classifyQuestions } from '@/services/edgeFunctions';
+import { classifyBloom, detectKnowledgeDimension, inferDifficulty } from '@/services/ai/classify';
 
 interface BulkImportProps {
   onClose: () => void;
@@ -276,17 +276,21 @@ export default function BulkImport({
 
         // Fallback to local classification
         normalizedData.forEach((question) => {
-          const classification = classifyQuestion(
-            question.question_text,
-            question.question_type,
-            question.topic
-          );
-          
-          question.bloom_level = question.bloom_level || classification.bloom_level;
-          question.difficulty = question.difficulty || classification.difficulty;
-          question.knowledge_dimension = question.knowledge_dimension || classification.knowledge_dimension;
-          question.ai_confidence_score = classification.confidence;
-          question.needs_review = classification.needs_review;
+          if (!question.bloom_level) {
+            question.bloom_level = classifyBloom(question.question_text);
+          }
+          if (!question.knowledge_dimension) {
+            question.knowledge_dimension = detectKnowledgeDimension(question.question_text, question.question_type);
+          }
+          if (!question.difficulty) {
+            question.difficulty = inferDifficulty(
+              question.bloom_level as any,
+              question.question_text,
+              question.question_type
+            );
+          }
+          question.ai_confidence_score = 0.6;
+          question.needs_review = true;
         });
 
         setProgress(60);
