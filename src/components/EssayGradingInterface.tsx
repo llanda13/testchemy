@@ -17,6 +17,7 @@ import {
   Eye
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { Questions, Rubrics, ActivityLog } from '@/services/db';
 import { toast } from 'sonner';
 import { RubricScoring } from './RubricScoring';
 
@@ -79,38 +80,36 @@ export const EssayGradingInterface: React.FC<EssayGradingInterfaceProps> = ({ on
     setLoading(true);
     try {
       // Load essay/short answer questions
-      const { data: questionsData, error: questionsError } = await (supabase as any)
-        .from('questions')
-        .select('*')
-        .in('question_type', ['essay', 'short_answer'])
-        .eq('approved', true);
-
-      if (questionsError) throw questionsError;
-      setQuestions(questionsData || []);
+      const questionsData = await Questions.search({
+        approved: true
+      });
+      
+      const essayQuestions = questionsData.filter(q => 
+        q.question_type === 'essay' || q.question_type === 'short_answer'
+      );
+      setQuestions(essayQuestions);
 
       // Load rubrics for these questions
-      const questionIds = (questionsData || []).map(q => q.id);
+      const questionIds = essayQuestions.map(q => q.id);
       if (questionIds.length > 0) {
-        const { data: rubricsData, error: rubricsError } = await (supabase as any)
-          .from('question_rubrics')
-          .select(`
-            *,
-            criteria:rubric_criteria(*)
-          `)
-          .in('question_id', questionIds);
-
-        if (rubricsError) throw rubricsError;
-
         const rubricsMap: Record<string, QuestionRubric> = {};
-        (rubricsData || []).forEach(rubric => {
-          rubricsMap[rubric.question_id] = {
-            id: rubric.id,
-            title: rubric.title,
-            description: rubric.description,
-            total_points: rubric.total_points,
-            criteria: rubric.criteria.sort((a, b) => a.order_index - b.order_index)
-          };
-        });
+        
+        for (const questionId of questionIds) {
+          try {
+            const rubric = await Rubrics.getForQuestion(questionId);
+            if (rubric) {
+              rubricsMap[questionId] = {
+                id: rubric.id,
+                title: rubric.title,
+                description: rubric.description,
+                total_points: rubric.total_points,
+                criteria: rubric.criteria.sort((a, b) => a.order_index - b.order_index)
+              };
+            }
+          } catch (error) {
+            console.error(`Error loading rubric for question ${questionId}:`, error);
+          }
+        }
         setRubrics(rubricsMap);
       }
 
@@ -132,6 +131,14 @@ export const EssayGradingInterface: React.FC<EssayGradingInterfaceProps> = ({ on
   };
 
   const handleScoreSubmit = async (criterionScores: any[], totalScore: number) => {
+    // Log grading activity
+    if (selectedResponse) {
+      await ActivityLog.log('grade_essay', 'student_response', selectedResponse.id, {
+        student_name: selectedResponse.student_name,
+        total_score: totalScore
+      });
+    }
+    
     setShowScoring(false);
     setSelectedResponse(null);
     await loadData(); // Refresh data

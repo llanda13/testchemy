@@ -183,10 +183,12 @@ export const CollaborativeTestBuilder: React.FC<CollaborativeTestBuilderProps> =
                 </CardTitle>
                 {showCollaboration && (
                   <div className="mt-4">
-                    <CollaborationIndicator
-                      users={[{ id: "1", name: "Teacher", email: "teacher@example.com", color: "#3b82f6" }]}
-                      isConnected={true}
-                      currentUser={{ id: "1", name: "Teacher", email: "teacher@example.com", color: "#3b82f6" }}
+                    <CollaborativeDocumentManager
+                      documentId={documentId}
+                      documentType="test"
+                      documentTitle={testConfig.title || "Untitled Test"}
+                      currentUserEmail="teacher@example.com"
+                      isOwner={true}
                     />
                   </div>
                 )}
@@ -482,9 +484,14 @@ export const CollaborativeTestBuilder: React.FC<CollaborativeTestBuilderProps> =
                   </div>
                   {currentUser && (
                     <div className="flex items-center gap-2 p-2 bg-primary/5 rounded border border-primary/20">
-                      <div className="h-6 w-6 rounded-full text-xs text-white flex items-center justify-center" style={{ backgroundColor: currentUser.color }}>
-                        {currentUser.name.charAt(0).toUpperCase()}
-                      </div>
+                      <Avatar className="h-6 w-6">
+                        <AvatarFallback 
+                          className="text-xs text-white"
+                          style={{ backgroundColor: currentUser.color }}
+                        >
+                          {currentUser.name.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
                       <span className="text-sm font-medium">{currentUser.name}</span>
                     </div>
                   )}

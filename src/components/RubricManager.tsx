@@ -20,7 +20,7 @@ import {
   Target
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { Rubrics, ActivityLog } from "@/services/db";
 import { RubricPrintout } from "./RubricPrintout";
 
 interface Criterion {
@@ -86,16 +86,8 @@ export const RubricManager = ({ onBack }: RubricManagerProps) => {
   const fetchRubrics = async () => {
     setLoading(true);
     try {
-      const { data, error } = await (supabase as any)
-        .from('rubrics')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        throw error;
-      }
-
-      setRubrics(data || []);
+      const data = await Rubrics.listAll();
+      setRubrics(data);
     } catch (error) {
       console.error('Error fetching rubrics:', error);
       toast({
@@ -119,7 +111,7 @@ export const RubricManager = ({ onBack }: RubricManagerProps) => {
         return;
       }
 
-      const rubricData = {
+      const rubric = await Rubrics.create({
         title: formData.title,
         description: formData.description,
         subject: formData.subject,
@@ -128,23 +120,15 @@ export const RubricManager = ({ onBack }: RubricManagerProps) => {
         criteria: formData.criteria,
         performance_levels: formData.performance_levels,
         created_by: 'teacher'
-      };
-
-      let result;
-      if (editingRubric) {
-        result = await (supabase as any)
-          .from('rubrics')
-          .update(rubricData)
-          .eq('id', editingRubric.id);
-      } else {
-        result = await (supabase as any)
-          .from('rubrics')
-          .insert([rubricData]);
-      }
-
-      if (result.error) {
-        throw result.error;
-      }
+      });
+      
+      // Log activity
+      await ActivityLog.log(
+        editingRubric ? 'update_rubric' : 'create_rubric',
+        'rubric',
+        rubric.id,
+        { title: formData.title }
+      );
 
       toast({
         title: "Success",
@@ -167,14 +151,10 @@ export const RubricManager = ({ onBack }: RubricManagerProps) => {
 
   const handleDeleteRubric = async (rubricId: string) => {
     try {
-      const { error } = await (supabase as any)
-        .from('rubrics')
-        .delete()
-        .eq('id', rubricId);
-
-      if (error) {
-        throw error;
-      }
+      await Rubrics.delete(rubricId);
+      
+      // Log activity
+      await ActivityLog.log('delete_rubric', 'rubric', rubricId);
 
       toast({
         title: "Success",

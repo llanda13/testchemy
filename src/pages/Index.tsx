@@ -6,9 +6,9 @@ import { Dashboard } from "@/components/Dashboard";
 import { TOSBuilder } from "@/components/TOSBuilder";
 import { QuestionBank } from "@/components/QuestionBank";
 import { TestGenerator } from "@/components/TestGenerator";
-import AIApprovalWorkflow from "@/components/AIApprovalWorkflow";
+import { AIApprovalWorkflow } from "@/components/AIApprovalWorkflow";
 import { RubricManager } from "@/components/RubricManager";
-import MultiVersionTestGenerator from "@/components/MultiVersionTestGenerator";
+import { MultiVersionTestGenerator } from "@/components/MultiVersionTestGenerator";
 import { CollaborativeQuestionBank } from "@/components/CollaborativeQuestionBank";
 import { EssayGradingInterface } from "@/components/EssayGradingInterface";
 import { toast } from "sonner";
@@ -150,15 +150,15 @@ const Index = () => {
         </div>
       )}
 
-      {currentView === 'ai-approval' && (
+      {currentView === 'ai-approval' && user.isAuthenticated && user.role === 'admin' && (
         <AIApprovalWorkflow onBack={() => setCurrentView('dashboard')} />
       )}
 
-      {currentView === 'rubric-manager' && (
+      {currentView === 'rubric-manager' && user.isAuthenticated && (
         <RubricManager onBack={() => setCurrentView('dashboard')} />
       )}
 
-      {currentView === 'multi-version-test' && (
+      {currentView === 'multi-version-test' && user.isAuthenticated && (
         <MultiVersionTestGenerator onBack={() => setCurrentView('dashboard')} />
       )}
 

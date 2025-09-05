@@ -3,10 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FileText, Download, Eye, ArrowLeft } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { RubricAnswerKey } from "./RubricAnswerKey";
-import { supabase } from "@/integrations/supabase/client";
+import { Questions, Tests, Rubrics } from "@/services/db";
+import { buildNeedsFromTOS, fetchQuestionsForNeeds, generateTestFromTOS } from "@/lib/testGenerator";
+import { exportTestVersion, exportAnswerKey } from "@/lib/pdfExport";
 
 interface TestGeneratorProps {
   onBack: () => void;
@@ -24,19 +28,54 @@ interface GeneratedQuestion {
 }
 
 export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
-  const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedTest, setGeneratedTest] = useState<GeneratedQuestion[] | null>(null);
   const [rubrics, setRubrics] = useState<Record<string, any>>({});
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [generationStatus, setGenerationStatus] = useState("");
+  const [generationWarnings, setGenerationWarnings] = useState<string[]>([]);
 
   // Mock TOS data - this would come from the actual TOS Builder
   const mockTOS = {
+    formData: {
     subject: "IS 9 - System Analysis and Design",
     course: "BSIS",
     yearSection: "3A",
     examPeriod: "Final Examination",
     schoolYear: "2024-2025",
-    totalItems: 50
+      totalItems: 50,
+      topics: [
+        { topic: "Requirements Engineering", hours: 18 },
+        { topic: "Data and Process Modeling", hours: 15 },
+        { topic: "Object Modeling & Development", hours: 12 }
+      ]
+    },
+    distribution: {
+      "Requirements Engineering": {
+        remembering: [1, 2, 3],
+        understanding: [4, 5, 6],
+        applying: [15, 16],
+        analyzing: [25, 26],
+        evaluating: [43],
+        creating: [44]
+      },
+      "Data and Process Modeling": {
+        remembering: [7, 8],
+        understanding: [9, 10],
+        applying: [17, 18],
+        analyzing: [27, 28],
+        evaluating: [45],
+        creating: [46]
+      },
+      "Object Modeling & Development": {
+        remembering: [11, 12],
+        understanding: [13, 14],
+        applying: [19, 20],
+        analyzing: [29, 30],
+        evaluating: [47],
+        creating: [48]
+      }
+    }
   };
 
   // Mock generated test
@@ -91,25 +130,18 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
       const essayQuestions = generatedTest?.filter(q => q.type === 'Essay') || [];
       if (essayQuestions.length === 0) return;
 
-      const questionIds = essayQuestions.map(q => q.id.toString());
-      
-      const { data: rubricsData, error } = await (supabase as any)
-        .from('question_rubrics')
-        .select(`
-          *,
-          criteria:rubric_criteria(*)
-        `)
-        .in('question_id', questionIds);
-
-      if (error) throw error;
-
       const rubricsMap: Record<string, any> = {};
-      (rubricsData || []).forEach(rubric => {
-        rubricsMap[rubric.question_id] = {
-          ...rubric,
-          criteria: rubric.criteria.sort((a, b) => a.order_index - b.order_index)
-        };
-      });
+      
+      for (const question of essayQuestions) {
+        try {
+          const rubric = await Rubrics.getForQuestion(question.id.toString());
+          if (rubric) {
+            rubricsMap[question.id.toString()] = rubric;
+          }
+        } catch (error) {
+          console.error(`Error loading rubric for question ${question.id}:`, error);
+        }
+      }
       
       setRubrics(rubricsMap);
     } catch (error) {
@@ -119,32 +151,102 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
 
   const handleGenerateTest = async () => {
     setIsGenerating(true);
+    setGenerationProgress(0);
+    setGenerationStatus("Initializing test generation...");
+    setGenerationWarnings([]);
     
-    // Simulate test generation
-    setTimeout(() => {
-      setGeneratedTest(mockGeneratedTest);
+    try {
+      setGenerationProgress(20);
+      setGenerationStatus("Analyzing TOS matrix...");
+      
+      const testConfig = {
+        title: `${mockTOS.formData.subject} Test`,
+        subject: mockTOS.formData.subject,
+        course: mockTOS.formData.course,
+        year_section: mockTOS.formData.yearSection,
+        exam_period: mockTOS.formData.examPeriod,
+        school_year: mockTOS.formData.schoolYear,
+        instructions: "Read each question carefully and select the best answer.",
+        time_limit: 60,
+        points_per_question: 1,
+        shuffle_questions: false,
+        shuffle_choices: false,
+        number_of_versions: 1
+      };
+      
+      setGenerationProgress(40);
+      setGenerationStatus("Fetching questions from bank...");
+      
+      const result = await generateTestFromTOS(mockTOS, testConfig);
+      
+      setGenerationProgress(80);
+      setGenerationStatus("Formatting test questions...");
+      
+      // Transform to component format
+      const transformedQuestions = result.versions[0]?.questions.map((q: any, index: number) => ({
+        id: index + 1,
+        text: q.question_text,
+        type: q.question_type === 'mcq' || q.question_type === 'multiple_choice' ? 'Multiple Choice' : 
+              q.question_type === 'essay' ? 'Essay' : 'True/False',
+        options: q.choices ? Object.values(q.choices) : undefined,
+        correctAnswer: q.correct_answer,
+        topic: q.topic,
+        bloomLevel: q.bloom_level,
+        difficulty: q.difficulty
+      })) || [];
+      
+      setGenerationProgress(100);
+      setGenerationStatus("Test generation complete!");
+      
+      setGeneratedTest(transformedQuestions);
+      setGenerationWarnings(result.warnings);
+      
+      toast.success("Test generated successfully!");
+      
+      if (result.generatedQuestions > 0) {
+        toast.info(`Generated ${result.generatedQuestions} new AI questions to fill gaps`);
+      }
+    } catch (error) {
+      console.error('Error generating test:', error);
+      toast.error("Failed to generate test");
+      setGenerationStatus("Generation failed");
+    } finally {
       setIsGenerating(false);
-      toast({
-        title: "Success",
-        description: "Test generated successfully!"
-      });
-    }, 2000);
+      setTimeout(() => {
+        setGenerationProgress(0);
+        setGenerationStatus("");
+      }, 2000);
+    }
   };
 
   const handleExportTest = () => {
-    toast({
-      title: "Success",
-      description: "Test exported as PDF!"
-    });
-    // TODO: Implement PDF export
+    if (generatedTest && generatedTest.length > 0) {
+      exportTestVersion('current-test', 'A', false)
+        .then(({ blob }) => {
+          const filename = `${mockTOS.formData.subject.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_test.pdf`;
+          downloadBlob(blob, filename);
+          toast.success("Test exported as PDF!");
+        })
+        .catch(error => {
+          console.error('Export error:', error);
+          toast.error("Failed to export test");
+        });
+    }
   };
 
   const handleExportAnswerKey = () => {
-    toast({
-      title: "Success", 
-      description: "Answer key exported as PDF!"
-    });
-    // TODO: Implement answer key export
+    if (generatedTest && generatedTest.length > 0) {
+      exportAnswerKey('current-test', 'A', false)
+        .then(({ blob }) => {
+          const filename = `${mockTOS.formData.subject.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_answer_key.pdf`;
+          downloadBlob(blob, filename);
+          toast.success("Answer key exported as PDF!");
+        })
+        .catch(error => {
+          console.error('Export error:', error);
+          toast.error("Failed to export answer key");
+        });
+    }
   };
 
   const easyQuestions = generatedTest?.filter(q => q.difficulty === 'Easy') || [];
@@ -176,23 +278,27 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <p className="text-sm text-muted-foreground">Subject</p>
-              <p className="font-medium">{mockTOS.subject}</p>
+              <p className="font-medium">{mockTOS.formData.subject}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Course & Section</p>
-              <p className="font-medium">{mockTOS.course} - {mockTOS.yearSection}</p>
+              <p className="font-medium">{mockTOS.formData.course} - {mockTOS.formData.yearSection}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Exam Period</p>
-              <p className="font-medium">{mockTOS.examPeriod}</p>
+              <p className="font-medium">{mockTOS.formData.examPeriod}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">School Year</p>
-              <p className="font-medium">{mockTOS.schoolYear}</p>
+              <p className="font-medium">{mockTOS.formData.schoolYear}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Items</p>
-              <p className="font-medium">{mockTOS.totalItems}</p>
+              <p className="font-medium">{mockTOS.formData.totalItems}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Topics</p>
+              <p className="font-medium">{mockTOS.formData.topics.length}</p>
             </div>
           </div>
         </CardContent>
@@ -206,9 +312,23 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
               <div>
                 <h3 className="text-lg font-semibold mb-2">Generate Test Questions</h3>
                 <p className="text-muted-foreground">
-                  Click below to automatically generate {mockTOS.totalItems} test questions based on your TOS matrix.
+                  Click below to automatically generate {mockTOS.formData.totalItems} test questions based on your TOS matrix.
+                  The system will use approved questions from the bank and generate AI questions for any gaps.
                 </p>
               </div>
+              
+              {isGenerating && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>{generationStatus}</span>
+                      <span>{Math.round(generationProgress)}%</span>
+                    </div>
+                    <Progress value={generationProgress} />
+                  </div>
+                </div>
+              )}
+              
               <Button 
                 size="lg" 
                 onClick={handleGenerateTest}
@@ -225,6 +345,23 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
       {/* Generated Test Preview */}
       {generatedTest && (
         <div className="space-y-6">
+          {/* Generation Warnings */}
+          {generationWarnings.length > 0 && (
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                <div className="space-y-1">
+                  <p className="font-medium">Generation Notes:</p>
+                  <ul className="list-disc list-inside text-sm">
+                    {generationWarnings.map((warning, index) => (
+                      <li key={index}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+          
           {/* Export Actions */}
           <Card>
             <CardContent className="pt-6">
@@ -253,8 +390,8 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
                 <p className="text-lg">College of Computing and Information Sciences</p>
                 <Separator className="my-4" />
                 <div className="space-y-1">
-                  <p><strong>Subject:</strong> {mockTOS.subject}</p>
-                  <p><strong>Examination:</strong> {mockTOS.examPeriod} | <strong>Year:</strong> {mockTOS.schoolYear} | <strong>Course:</strong> {mockTOS.course} – {mockTOS.yearSection}</p>
+                  <p><strong>Subject:</strong> {mockTOS.formData.subject}</p>
+                  <p><strong>Examination:</strong> {mockTOS.formData.examPeriod} | <strong>Year:</strong> {mockTOS.formData.schoolYear} | <strong>Course:</strong> {mockTOS.formData.course} – {mockTOS.formData.yearSection}</p>
                 </div>
               </div>
             </CardHeader>
@@ -420,6 +557,27 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
                 <div>
                   <p className="text-2xl font-bold text-red-600">{difficultQuestions.length}</p>
                   <p className="text-sm text-muted-foreground">Difficult Questions</p>
+                </div>
+              </div>
+              
+              <Separator className="my-4" />
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                <div>
+                  <p className="text-lg font-bold text-primary">{generatedTest.length}</p>
+                  <p className="text-sm text-muted-foreground">Total Questions</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-secondary">
+                    {mockTOS.formData.topics.length}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Topics Covered</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-accent">
+                    {generatedTest.length * 1}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Total Points</p>
                 </div>
               </div>
             </CardContent>
