@@ -296,21 +296,23 @@ export default function BulkImport({
       setProgress(80);
       setCurrentStep('Saving to database...');
 
-      // Ensure all required fields are present
+      // Ensure all required fields are present with proper types
       const questionsWithDefaults = normalizedData.map(q => ({
-        ...q,
+        topic: q.topic || 'General',
+        question_text: q.question_text || '',
+        question_type: (q.question_type as 'mcq' | 'true_false' | 'essay' | 'short_answer') || 'mcq',
+        choices: q.choices || {},
+        correct_answer: q.correct_answer || '',
         bloom_level: q.bloom_level || 'understanding',
         difficulty: q.difficulty || 'average',
         knowledge_dimension: q.knowledge_dimension || 'conceptual',
-        question_type: q.question_type as 'mcq' | 'true_false' | 'essay' | 'short_answer',
-        created_by: q.created_by as 'teacher' | 'ai' | 'bulk_import',
-        correct_answer: q.correct_answer || '',
+        created_by: 'bulk_import' as const,
         approved: false,
         ai_confidence_score: q.ai_confidence_score || 0.5,
-        needs_review: q.needs_review !== false
+        needs_review: (q.needs_review !== false)
       }));
 
-      // Insert into database
+      // Insert into database using the Questions service
       const insertedQuestions = await Questions.bulkInsert(questionsWithDefaults);
 
       setProgress(100);
