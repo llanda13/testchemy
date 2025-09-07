@@ -173,5 +173,22 @@ export const Questions = {
 
   async insert(question: Omit<QuestionInsert, 'id' | 'created_at' | 'updated_at'>): Promise<Question> {
     return this.create(question);
+  },
+
+  // New approval toggle function with needs_review sync
+  async setApproval(questionId: string, approved: boolean): Promise<Question> {
+    const { data, error } = await supabase
+      .from('questions')
+      .update({ 
+        approved, 
+        needs_review: !approved,
+        approval_timestamp: approved ? new Date().toISOString() : null
+      })
+      .eq('id', questionId)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 };
