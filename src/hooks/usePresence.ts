@@ -103,9 +103,9 @@ export function usePresence(room: string, userData?: { name: string; email: stri
             
             Object.values(presenceState).forEach(presences => {
               presences.forEach(presence => {
-                if (typeof presence === 'object' && presence !== null) {
-                  users.push(presence as PresenceUser);
-                }
+                 if (typeof presence === 'object' && presence !== null) {
+                   users.push(presence as unknown as PresenceUser);
+                 }
               });
             });
 

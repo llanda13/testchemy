@@ -84,7 +84,7 @@ export class CollaborativeEditor {
           Object.values(presenceState).forEach(presences => {
             presences.forEach(presence => {
               if (typeof presence === 'object' && presence !== null) {
-                users.push(presence as CollaborationUser);
+                users.push(presence as unknown as CollaborationUser);
               }
             });
           });

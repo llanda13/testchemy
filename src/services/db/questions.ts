@@ -6,6 +6,13 @@ export type Question = Database['public']['Tables']['questions']['Row'];
 export type QuestionInsert = Database['public']['Tables']['questions']['Insert'];
 export type QuestionUpdate = Database['public']['Tables']['questions']['Update'];
 
+export interface QuestionFilters {
+  topic?: string;
+  bloom_level?: string;
+  difficulty?: string;
+  approved?: boolean;
+}
+
 // Convert database question to component-compatible format
 export function convertQuestion(dbQuestion: Question): Question & { correct_answer: string } {
   return {
@@ -155,5 +162,16 @@ export const Questions = {
     });
 
     return stats;
+  },
+
+  async toggleApproval(id: string): Promise<Question> {
+    const question = await this.getById(id);
+    if (!question) throw new Error('Question not found');
+    
+    return this.update(id, { approved: !question.approved });
+  },
+
+  async insert(question: Omit<QuestionInsert, 'id' | 'created_at' | 'updated_at'>): Promise<Question> {
+    return this.create(question);
   }
 };

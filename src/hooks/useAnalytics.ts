@@ -44,8 +44,8 @@ export const useAnalytics = () => {
       ]);
 
 
-      setAnalytics({
-        ...prev,
+      setAnalytics(current => ({
+        ...current,
         bloomDistribution: bloomData,
         difficultySpread: difficultyData,
         creatorStats: creatorData,
@@ -55,7 +55,7 @@ export const useAnalytics = () => {
         tosBloomByTopic: {},
         loading: false,
         error: null
-      });
+      }));
     } catch (error) {
       console.error('Error fetching analytics:', error);
       setAnalytics(prev => ({ 
