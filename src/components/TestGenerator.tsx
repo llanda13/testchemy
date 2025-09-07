@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { FileText, Download, Eye, ArrowLeft } from "lucide-react";
+import { FileText, Download, Eye, ArrowLeft, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { RubricAnswerKey } from "./RubricAnswerKey";
 import { Questions, Tests, Rubrics } from "@/services/db";
@@ -186,9 +186,9 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
       const transformedQuestions = result.versions[0]?.questions.map((q: any, index: number) => ({
         id: index + 1,
         text: q.question_text,
-        type: q.question_type === 'mcq' || q.question_type === 'multiple_choice' ? 'Multiple Choice' : 
-              q.question_type === 'essay' ? 'Essay' : 'True/False',
-        options: q.choices ? Object.values(q.choices) : undefined,
+        type: (q.question_type === 'mcq' || q.question_type === 'multiple_choice' ? 'Multiple Choice' : 
+              q.question_type === 'essay' ? 'Essay' : 'True/False') as 'Multiple Choice' | 'Essay' | 'True/False' | 'Fill in the Blank',
+        options: q.choices ? Object.values(q.choices).map(String) : undefined,
         correctAnswer: q.correct_answer,
         topic: q.topic,
         bloomLevel: q.bloom_level,
@@ -224,7 +224,14 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
       exportTestVersion('current-test', 'A', false)
         .then(({ blob }) => {
           const filename = `${mockTOS.formData.subject.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_test.pdf`;
-          downloadBlob(blob, filename);
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
           toast.success("Test exported as PDF!");
         })
         .catch(error => {
@@ -239,7 +246,14 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
       exportAnswerKey('current-test', 'A', false)
         .then(({ blob }) => {
           const filename = `${mockTOS.formData.subject.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_answer_key.pdf`;
-          downloadBlob(blob, filename);
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
           toast.success("Answer key exported as PDF!");
         })
         .catch(error => {

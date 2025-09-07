@@ -35,7 +35,7 @@ export const Rubrics = {
     const rubricData = {
       name,
       criteria,
-      total_max: criteria.reduce((sum, c) => sum + c.max_points, 0),
+      total_max: criteria.reduce((sum, c) => sum + (c.max_points || c.points || 0), 0),
       created_by: user?.id
     };
     
@@ -79,10 +79,6 @@ export const Rubrics = {
     
     if (error) throw error;
     return data ?? [];
-  },
-
-  async listAll() {
-    return this.list();
   },
 
   async listMine() {

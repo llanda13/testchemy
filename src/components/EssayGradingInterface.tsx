@@ -133,10 +133,7 @@ export const EssayGradingInterface: React.FC<EssayGradingInterfaceProps> = ({ on
   const handleScoreSubmit = async (criterionScores: any[], totalScore: number) => {
     // Log grading activity
     if (selectedResponse) {
-      await ActivityLog.log('grade_essay', 'student_response', selectedResponse.id, {
-        student_name: selectedResponse.student_name,
-        total_score: totalScore
-      });
+      await ActivityLog.log('grade_essay', 'student_response', selectedResponse.id);
     }
     
     setShowScoring(false);

@@ -86,7 +86,7 @@ export const RubricManager = ({ onBack }: RubricManagerProps) => {
   const fetchRubrics = async () => {
     setLoading(true);
     try {
-      const data = await Rubrics.list();
+      const data = await Rubrics.listMine();
       setRubrics(data);
     } catch (error) {
       console.error('Error fetching rubrics:', error);
@@ -111,11 +111,7 @@ export const RubricManager = ({ onBack }: RubricManagerProps) => {
         return;
       }
 
-      const rubric = await Rubrics.create({
-        name: formData.title,
-        criteria: formData.criteria,
-        total_max: formData.total_points
-      });
+      const rubric = await Rubrics.create(formData.title, formData.criteria);
       
       // Log activity
       await ActivityLog.log(
