@@ -467,66 +467,77 @@ export type Database = {
       rubric_criteria: {
         Row: {
           created_at: string | null
-          criterion_name: string
-          description: string | null
           id: string
-          max_points: number
-          order_index: number
+          max_score: number | null
+          name: string
+          order_index: number | null
           rubric_id: string | null
+          weight: number | null
         }
         Insert: {
           created_at?: string | null
-          criterion_name: string
-          description?: string | null
           id?: string
-          max_points: number
-          order_index?: number
+          max_score?: number | null
+          name: string
+          order_index?: number | null
           rubric_id?: string | null
+          weight?: number | null
         }
         Update: {
           created_at?: string | null
-          criterion_name?: string
-          description?: string | null
           id?: string
-          max_points?: number
-          order_index?: number
+          max_score?: number | null
+          name?: string
+          order_index?: number | null
           rubric_id?: string | null
+          weight?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "rubric_criteria_rubric_id_fkey"
+            columns: ["rubric_id"]
+            isOneToOne: false
+            referencedRelation: "rubrics"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rubric_scores: {
         Row: {
           comments: string | null
           created_at: string | null
-          graded_by: string | null
           id: string
           question_id: string | null
+          scorer_id: string | null
           scores: Json
           student_id: string | null
           student_name: string | null
-          total: number
+          test_id: string | null
+          total_score: number
         }
         Insert: {
           comments?: string | null
           created_at?: string | null
-          graded_by?: string | null
           id?: string
           question_id?: string | null
-          scores: Json
+          scorer_id?: string | null
+          scores?: Json
           student_id?: string | null
           student_name?: string | null
-          total: number
+          test_id?: string | null
+          total_score?: number
         }
         Update: {
           comments?: string | null
           created_at?: string | null
-          graded_by?: string | null
           id?: string
           question_id?: string | null
+          scorer_id?: string | null
           scores?: Json
           student_id?: string | null
           student_name?: string | null
-          total?: number
+          test_id?: string | null
+          total_score?: number
         }
         Relationships: [
           {
@@ -536,45 +547,38 @@ export type Database = {
             referencedRelation: "questions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "rubric_scores_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "generated_tests"
+            referencedColumns: ["id"]
+          },
         ]
       }
       rubrics: {
         Row: {
           created_at: string | null
           created_by: string | null
-          criteria: Json
+          description: string | null
           id: string
-          name: string
-          question_id: string | null
-          total_max: number
+          title: string
         }
         Insert: {
           created_at?: string | null
           created_by?: string | null
-          criteria: Json
+          description?: string | null
           id?: string
-          name: string
-          question_id?: string | null
-          total_max: number
+          title: string
         }
         Update: {
           created_at?: string | null
           created_by?: string | null
-          criteria?: Json
+          description?: string | null
           id?: string
-          name?: string
-          question_id?: string | null
-          total_max?: number
+          title?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "rubrics_question_id_fkey"
-            columns: ["question_id"]
-            isOneToOne: false
-            referencedRelation: "questions"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       student_responses: {
         Row: {

@@ -2,3 +2,9 @@ project_id = "lohmzywgbkntvpuygvfx"
 
 [functions.classify-questions]
 verify_jwt = false
+
+[functions.rubrics]
+verify_jwt = true
+
+[functions.rubric-scores]
+verify_jwt = true

@@ -28,6 +28,8 @@ interface Criterion {
   name: string;
   description: string;
   points: number;
+  weight?: number;
+  max_score?: number;
 }
 
 interface PerformanceLevel {
@@ -87,7 +89,7 @@ export const RubricManager = ({ onBack }: RubricManagerProps) => {
   const fetchRubrics = async () => {
     setLoading(true);
     try {
-      const data = await Rubrics.listMine();
+      const data = await Rubrics.list();
       // Map database response to expected interface
       const mappedRubrics = data.map(rubric => ({
         id: rubric.id,
@@ -124,7 +126,15 @@ export const RubricManager = ({ onBack }: RubricManagerProps) => {
         return;
       }
 
-      const rubric = await Rubrics.create(formData.title, formData.criteria);
+      const rubric = await Rubrics.create({
+        title: formData.title,
+        description: formData.description,
+        criteria: formData.criteria.map(c => ({
+          name: c.name,
+          weight: c.weight || 1.0,
+          max_score: c.max_score || c.points || 5
+        }))
+      });
       
       await ActivityLog.log(
         editingRubric ? 'update_rubric' : 'create_rubric',

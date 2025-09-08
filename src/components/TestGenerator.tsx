@@ -135,10 +135,11 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
       
       for (const question of essayQuestions) {
         try {
-          const rubric = await Rubrics.getForQuestion(question.id.toString());
-          if (rubric) {
-            rubricsMap[question.id.toString()] = rubric;
-          }
+          // For now, skip rubric loading for questions since we need to implement question-rubric associations
+          // const rubric = await Rubrics.getById(question.rubric_id);
+          // if (rubric) {
+          //   rubricsMap[question.id.toString()] = rubric;
+          // }
         } catch (error) {
           console.error(`Error loading rubric for question ${question.id}:`, error);
         }

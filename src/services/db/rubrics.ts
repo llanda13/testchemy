@@ -1,18 +1,18 @@
 import { supabase } from "@/integrations/supabase/client";
 
 export interface RubricCriterion {
-  key: string;
+  id?: string;
   name: string;
-  description: string;
-  max_points: number;
+  weight: number;
+  max_score: number;
+  order_index?: number;
 }
 
 export interface Rubric {
   id?: string;
-  name: string;
-  question_id?: string;
-  criteria: RubricCriterion[];
-  total_max: number;
+  title: string;
+  description?: string;
+  criteria?: RubricCriterion[];
   created_by?: string;
   created_at?: string;
 }
@@ -20,162 +20,164 @@ export interface Rubric {
 export interface RubricScore {
   id?: string;
   question_id: string;
+  test_id?: string;
   student_id?: string;
   student_name?: string;
-  scores: Record<string, number>; // {clarity: 4, relevance: 5, mechanics: 3}
-  total: number;
+  scorer_id?: string;
+  scores: Record<string, number>; // criterion_id -> score
+  total_score: number;
   comments?: string;
-  graded_by?: string;
   created_at?: string;
 }
 
 export const Rubrics = {
-  async create(name: string, criteria: any[]) {
-    const { data: { user } } = await supabase.auth.getUser();
-    const rubricData = {
-      name,
-      criteria,
-      total_max: criteria.reduce((sum, c) => sum + (c.max_points || c.points || 0), 0),
-      created_by: user?.id
-    };
-    
-    const { data, error } = await supabase
-      .from("rubrics")
-      .insert(rubricData)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
+  // Create a new rubric
+  async create(rubricData: { title: string; description?: string; criteria: RubricCriterion[] }) {
+    const response = await supabase.functions.invoke('rubrics', {
+      body: rubricData
+    });
+
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+
+    return response.data;
   },
 
-  async getById(id: string) {
-    const { data, error } = await supabase
-      .from("rubrics")
-      .select("*")
-      .eq("id", id)
-      .single();
-    
-    if (error) throw error;
-    return data;
-  },
-
-  async getByQuestion(questionId: string) {
-    const { data, error } = await supabase
-      .from("rubrics")
-      .select("*")
-      .eq("question_id", questionId)
-      .maybeSingle();
-    
-    if (error) throw error;
-    return data;
-  },
-
+  // Get all rubrics for the current user
   async list() {
-    const { data, error } = await supabase
-      .from("rubrics")
-      .select("*")
-      .order("created_at", { ascending: false });
-    
-    if (error) throw error;
-    return data ?? [];
+    const response = await supabase.functions.invoke('rubrics', {
+      method: 'GET'
+    });
+
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+
+    return response.data || [];
   },
 
-  async listMine() {
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data, error } = await supabase
-      .from("rubrics")
-      .select("*")
-      .eq("created_by", user?.id)
-      .order("created_at", { ascending: false });
-    
-    if (error) throw error;
-    return data ?? [];
+  // Get a specific rubric with criteria
+  async getById(id: string) {
+    const response = await supabase.functions.invoke(`rubrics/${id}`, {
+      method: 'GET'
+    });
+
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+
+    return response.data;
   },
 
+  // Update a rubric
+  async update(id: string, rubricData: { title: string; description?: string; criteria: RubricCriterion[] }) {
+    const response = await supabase.functions.invoke(`rubrics/${id}`, {
+      method: 'PUT',
+      body: rubricData
+    });
+
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+
+    return response.data;
+  },
+
+  // Delete a rubric
+  async delete(id: string) {
+    const response = await supabase.functions.invoke(`rubrics/${id}`, {
+      method: 'DELETE'
+    });
+
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+
+    return response.data;
+  },
+
+  // Get rubrics associated with a question
+  async getByQuestion(questionId: string) {
+    // This would require implementing question-rubric associations
+    // For now, return null since we need to establish the relationship
+    return null;
+  },
+
+  // Legacy method for compatibility
   async getForQuestion(questionId: string) {
     return this.getByQuestion(questionId);
   },
 
-  async attachToQuestion(questionId: string, rubricId: string) {
-    return this.update(rubricId, { question_id: questionId });
-  },
+  // Submit a score for a student's answer
+  async submitScore(scoreData: {
+    question_id: string;
+    test_id?: string;
+    student_id?: string;
+    student_name?: string;
+    scores: Record<string, number>;
+    comments?: string;
+  }) {
+    const response = await supabase.functions.invoke('rubric-scores', {
+      body: scoreData
+    });
 
-  async update(id: string, patch: Partial<Rubric>) {
-    // Convert criteria to Json format for database
-    const updateData: any = { ...patch };
-    if (updateData.criteria) {
-      updateData.criteria = updateData.criteria as any;
+    if (response.error) {
+      throw new Error(response.error.message);
     }
-    
-    const { data, error } = await supabase
-      .from("rubrics")
-      .update(updateData)
-      .eq("id", id)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
+
+    return response.data;
   },
 
-  async delete(id: string) {
-    const { error } = await supabase
-      .from("rubrics")
-      .delete()
-      .eq("id", id);
-    
-    if (error) throw error;
+  // Get scores for a question, test, or student
+  async getScores(filters: {
+    question_id?: string;
+    test_id?: string;
+    student_id?: string;
+  }) {
+    const params = new URLSearchParams();
+    if (filters.question_id) params.append('question_id', filters.question_id);
+    if (filters.test_id) params.append('test_id', filters.test_id);
+    if (filters.student_id) params.append('student_id', filters.student_id);
+
+    const response = await supabase.functions.invoke(`rubric-scores?${params.toString()}`, {
+      method: 'GET'
+    });
+
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+
+    return response.data || [];
   },
 
-  async saveScore(payload: Omit<RubricScore, 'id' | 'created_at'>) {
-    const { data: { user } } = await supabase.auth.getUser();
-    const scoreData = {
-      ...payload,
-      graded_by: user?.id
-    };
-    
-    const { data, error } = await supabase
-      .from("rubric_scores")
-      .insert(scoreData)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
+  // Update a score
+  async updateScore(id: string, scoreData: {
+    scores?: Record<string, number>;
+    comments?: string;
+  }) {
+    const response = await supabase.functions.invoke(`rubric-scores/${id}`, {
+      method: 'PUT',
+      body: scoreData
+    });
+
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+
+    return response.data;
   },
 
-  async getScores(questionId: string) {
-    const { data, error } = await supabase
-      .from("rubric_scores")
-      .select("*")
-      .eq("question_id", questionId)
-      .order("created_at", { ascending: false });
-    
-    if (error) throw error;
-    return data ?? [];
-  },
+  // Delete a score
+  async deleteScore(id: string) {
+    const response = await supabase.functions.invoke(`rubric-scores/${id}`, {
+      method: 'DELETE'
+    });
 
-  async getScoresByStudent(studentId: string) {
-    const { data, error } = await supabase
-      .from("rubric_scores")
-      .select("*")
-      .eq("student_id", studentId)
-      .order("created_at", { ascending: false });
-    
-    if (error) throw error;
-    return data ?? [];
-  },
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
 
-  async updateScore(id: string, patch: Partial<RubricScore>) {
-    const { data, error } = await supabase
-      .from("rubric_scores")
-      .update(patch)
-      .eq("id", id)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
+    return response.data;
   }
 };
