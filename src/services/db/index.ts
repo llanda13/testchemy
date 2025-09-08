@@ -8,7 +8,7 @@ export { GeneratedTests } from './generatedTests';
 import { supabase } from "@/integrations/supabase/client";
 
 export const ActivityLog = {
-  async log(action: string, entityType: string, entityId: string, meta?: any) {
+  async log(action: string, entityType: string, entityId?: string, meta?: any) {
     const { data: { user } } = await supabase.auth.getUser();
     
     const { error } = await supabase
@@ -16,7 +16,7 @@ export const ActivityLog = {
       .insert({
         action,
         entity_type: entityType,
-        entity_id: entityId,
+        entity_id: entityId || null,
         user_id: user?.id,
         meta: meta || {}
       });

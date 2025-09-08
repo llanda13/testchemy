@@ -91,7 +91,7 @@ export function useRealtimeQuestions(initialFilters?: QuestionFilters) {
     
     async toggleApproval(id: string, approved: boolean, reason?: string) {
       try {
-        const updatedQuestion = await Questions.toggleApproval(id, approved, reason);
+        const updatedQuestion = await Questions.setApproval(id, approved);
         
         // Update local state immediately for better UX
         setQuestions(prev => prev.map(q => 
