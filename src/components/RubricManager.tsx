@@ -87,7 +87,19 @@ export const RubricManager = ({ onBack }: RubricManagerProps) => {
     setLoading(true);
     try {
       const data = await Rubrics.listMine();
-      setRubrics(data);
+      // Map database response to expected interface
+      const mappedRubrics = data.map(rubric => ({
+        id: rubric.id,
+        title: rubric.name,
+        subject: 'General', // Default since not in DB
+        description: '', // Default since not in DB
+        total_points: rubric.total_max,
+        criteria: Array.isArray(rubric.criteria) ? rubric.criteria as any[] : [],
+        performance_levels: [], // Default since not in DB
+        created_by: rubric.created_by,
+        created_at: rubric.created_at
+      }));
+      setRubrics(mappedRubrics);
     } catch (error) {
       console.error('Error fetching rubrics:', error);
       toast({
@@ -113,11 +125,9 @@ export const RubricManager = ({ onBack }: RubricManagerProps) => {
 
       const rubric = await Rubrics.create(formData.title, formData.criteria);
       
-      // Log activity
       await ActivityLog.log(
         editingRubric ? 'update_rubric' : 'create_rubric',
-        'rubric',
-        rubric.id
+        'rubric'
       );
 
       toast({
@@ -144,7 +154,7 @@ export const RubricManager = ({ onBack }: RubricManagerProps) => {
       await Rubrics.delete(rubricId);
       
       // Log activity
-      await ActivityLog.log('delete_rubric', 'rubric', rubricId);
+      await ActivityLog.log('delete_rubric', 'rubric');
 
       toast({
         title: "Success",

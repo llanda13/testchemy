@@ -140,12 +140,7 @@ export const RubricScoring: React.FC<RubricScoringProps> = ({
 
       if (responseError) throw responseError;
       
-      // Log grading activity
-      await ActivityLog.log('grade_response', 'student_response', response.id, {
-        student_name: response.student_name,
-        total_score: totalScore,
-        rubric_title: rubric.title
-      });
+      await ActivityLog.log('grade_response', 'student_response');
 
       toast.success('Rubric scoring saved successfully!');
       onScoreSubmit(scores, totalScore);

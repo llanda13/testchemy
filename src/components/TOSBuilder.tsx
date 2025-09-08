@@ -216,8 +216,8 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
       
       // Calculate if sufficient
       const totalShortage = Object.values(analysis).reduce((total: number, topicData: any) => {
-        return total + Object.values(topicData).reduce((topicTotal: number, bloomData: any) => {
-          return topicTotal + (bloomData.shortage || 0);
+        return total + Object.values(topicData as Record<string, any>).reduce((topicTotal: number, bloomData: any) => {
+          return topicTotal + (Number(bloomData.shortage) || 0);
         }, 0);
       }, 0);
       

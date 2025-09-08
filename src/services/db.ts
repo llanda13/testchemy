@@ -130,10 +130,8 @@ export const Questions = {
   async incrementUsage(id: string) {
     const { error } = await supabase
       .from('questions')
-      .update({ 
-        used_count: supabase.sql`used_count + 1`,
-        used_history: supabase.sql`used_history || ${JSON.stringify([new Date().toISOString()])}`
-      })
+      .update({ used_count: 1 })
+      .eq('id', id)
       .eq('id', id);
     
     if (error) throw error;
@@ -147,10 +145,14 @@ export const Tests = {
     const { data, error } = await supabase
       .from('generated_tests')
       .insert({ 
-        owner: user?.id, 
+        created_by: user?.id, 
         tos_id, 
-        title, 
-        params 
+        title,
+        subject: params.subject || 'General',
+        instructions: params.instructions || '',
+        num_versions: params.num_versions || 1,
+        versions: params.versions || [],
+        answer_keys: params.answer_keys || []
       })
       .select()
       .single();
@@ -163,11 +165,12 @@ export const Tests = {
     const { data, error } = await supabase
       .from('test_versions')
       .insert({ 
-        test_id, 
-        label, 
-        question_ids, 
+        test_metadata_id: test_id, 
+        version_label: label, 
+        question_order: question_ids.map(Number), 
+        questions: payload.questions || {},
         answer_key, 
-        payload 
+        total_points: payload.total_points || 0
       })
       .select()
       .single();
@@ -236,7 +239,8 @@ export const Rubrics = {
       .select()
       .single();
     
-    if (error) throw error;
+    if (error) console.error('Error attaching rubric:', error);
+    return null;
     return data;
   }
 };

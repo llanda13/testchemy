@@ -151,13 +151,10 @@ export async function fetchQuestionsForNeeds(needs: TestNeed[], approvedOnly: bo
     selectedQuestions.push(...inserted);
     
     // Log activity
-    await ActivityLog.log('generate_questions', 'bulk', null, {
-      count: generatedQuestions.length,
-      reason: 'insufficient_bank'
-    });
+    await ActivityLog.log('generate_questions', 'bulk');
   }
 
-  return { questions: selectedQuestions, warnings };
+  return selectedQuestions;
 }
 
 /**
@@ -265,30 +262,22 @@ export async function saveTestWithVersions(
   versions: TestVersion[]
 ): Promise<TestGenerationResult> {
   // Create test metadata
-  const testMetadata = await Tests.create({
-    title: config.title,
-    subject: config.subject,
-    course: config.course,
-    year_section: config.year_section,
-    exam_period: config.exam_period,
-    school_year: config.school_year,
-    instructions: config.instructions,
-    time_limit: config.time_limit,
-    points_per_question: config.points_per_question,
-    total_questions: versions[0]?.questions.length || 0,
-    shuffle_questions: config.shuffle_questions,
-    shuffle_choices: config.shuffle_choices,
-    number_of_versions: config.number_of_versions
+  const testMetadata = await Tests.create(config.tos_id || '', config.title, {
+    subject: config.subject || 'General',
+    instructions: config.instructions || '',
+    num_versions: config.number_of_versions || 1,
+    versions: [],
+    answer_keys: []
   });
-
-  // Also create generated_tests entry if from TOS
-  let generatedTest = null;
-  if (config.tos_id) {
-    generatedTest = await Tests.createGenerated(config.tos_id, config.title, {
-      config,
-      versions: versions.length,
-      total_questions: versions[0]?.questions.length || 0
-    });
+  // Save test versions
+  for (const version of versions) {
+    await Tests.addVersion(
+      testMetadata.id,
+      version.version_label || `Version ${version.version}`,
+      version.question_order.map(String),
+      version.answer_key,
+      version.total_points
+    );
   }
 
   // Save each version
@@ -302,12 +291,7 @@ export async function saveTestWithVersions(
     );
   }
 
-  // Log activity
-  await ActivityLog.log('generate_test', 'test_metadata', testMetadata.id, {
-    title: config.title,
-    versions: config.number_of_versions,
-    questions: versions[0]?.questions.length || 0
-  });
+  await ActivityLog.log('generate_test', 'test_metadata');
 
   const generatedQuestions = versions[0]?.questions.filter(q => q.created_by === 'ai').length || 0;
   
@@ -381,7 +365,7 @@ export function validateVersionBalance(
 
   // Warn if any category has very few questions
   Object.entries(topicCounts).forEach(([topic, count]) => {
-    if (count < 2 && config.number_of_versions > 1) {
+    if (Number(count) < 2 && config.number_of_versions > 1) {
       warnings.push(`Topic "${topic}" has only ${count} question(s). Consider adding more for better balance.`);
     }
   });
@@ -422,11 +406,10 @@ export async function generateTestFromTOS(
   // Build needs from TOS
   const needs = buildEnhancedNeedsFromTOS(tosMatrix);
   
-  // Fetch questions for needs
-  const { questions, warnings: fetchWarnings } = await fetchQuestionsForNeeds(needs, true);
+  const result = await fetchQuestionsForNeeds(needs, true);
   
   // Validate configuration
-  const configErrors = validateTestConfig(config, questions);
+  const configErrors = validateTestConfig(config, result);
   if (configErrors.length > 0) {
     throw new Error(`Configuration errors: ${configErrors.join(', ')}`);
   }

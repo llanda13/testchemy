@@ -260,7 +260,7 @@ export const QuestionBank = ({ onBack }: QuestionBankProps) => {
       await Questions.delete(questionId);
 
       // Log deletion activity
-      await ActivityLog.log('delete_question', 'question', questionId);
+      await ActivityLog.log('delete_question', 'question');
 
       toast.success('Question deleted successfully!');
 

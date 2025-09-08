@@ -286,8 +286,12 @@ export function TestGenerator({ tosData, onTestGenerated, onCancel }: TestGenera
       await supabase
         .from('generated_tests')
         .insert({
+          title: `${tosData.description} - ${tosData.examPeriod} Exam`,
+          subject: tosData.course || 'General',
           instructions: `${tosData.description} - ${tosData.examPeriod} Exam`,
-          items: JSON.stringify(questions) as any,
+          versions: JSON.stringify([questions]) as any,
+          answer_keys: JSON.stringify([]) as any,
+          num_versions: 1,
           answer_key: JSON.stringify(questions.reduce((acc, q) => {
             acc[q.id] = q.correctAnswer || q.question
             return acc
