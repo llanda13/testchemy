@@ -32,7 +32,7 @@ import {
   Target,
   Activity
 } from "lucide-react";
-import { Analytics } from "@/services/db";
+import { Analytics } from "@/services/db/analytics";
 
 const BLOOM_COLORS = {
   "Remembering": "hsl(var(--primary))",
@@ -83,7 +83,7 @@ export const AnalyticsCharts = () => {
     difficultySpread: Array<{name: string; value: number; percentage: number}>;
     usageStats: Array<{name: string; value: number; percentage: number}>;
     approvalStats: Array<{name: string; value: number}>;
-    topicAnalysis: Array<{topic: string; questionCount: number; avgDifficulty: number}>;
+    topicAnalysis: Array<{topic: string; questionCount: number; approvalRate: number}>;
     totalQuestions: number;
     aiQuestions: number;
     teacherQuestions: number;
@@ -128,7 +128,7 @@ export const AnalyticsCharts = () => {
         {
           event: '*',
           schema: 'public',
-          table: 'activities'
+          table: 'activity_log'
         },
         () => {
           loadAnalytics();
@@ -147,16 +147,16 @@ export const AnalyticsCharts = () => {
         bloomData,
         difficultyData,
         creatorData,
-        timelineData,
+        usageData,
         approvalData,
         topicData
       ] = await Promise.all([
-        Analytics.bloomCounts(),
-        Analytics.difficultyCounts(),
+        Analytics.bloomDistribution(),
+        Analytics.difficultySpread(),
         Analytics.creatorStats(),
-        Analytics.activityTimeline(),
+        Analytics.usageOverTime(),
         Analytics.approvalStats(),
-        Analytics.topicCounts()
+        Analytics.topicAnalysis()
       ]);
 
       const totalQuestions = bloomData.reduce((sum, item) => sum + item.value, 0);
@@ -165,37 +165,24 @@ export const AnalyticsCharts = () => {
       const approvedQuestions = approvalData.find(item => item.name === 'Approved')?.value || 0;
       const pendingApproval = approvalData.find(item => item.name === 'Pending Review')?.value || 0;
 
-      // Add percentage calculations
-      const bloomDistribution = bloomData.map(item => ({
-        ...item,
-        name: item.name.charAt(0).toUpperCase() + item.name.slice(1), // Capitalize
-        percentage: totalQuestions > 0 ? Math.round((item.value / totalQuestions) * 100) : 0
+      // Transform topic analysis data
+      const topicAnalysis = topicData.slice(0, 10).map((item) => ({
+        topic: item.topic,
+        questionCount: item.count,
+        approvalRate: item.count > 0 ? Math.round((item.approved / item.count) * 100) : 0
       }));
 
-      const difficultySpread = difficultyData.map(item => ({
-        ...item,
-        name: item.name.charAt(0).toUpperCase() + item.name.slice(1), // Capitalize
-        percentage: totalQuestions > 0 ? Math.round((item.value / totalQuestions) * 100) : 0
-      }));
-
-      // Calculate usage stats from test versions
+      // Calculate usage stats (mock for now until we have real usage tracking)
       const usageStats = [
         { name: 'Used in Tests', value: Math.floor(totalQuestions * 0.6), percentage: 60 },
         { name: 'Unused', value: Math.floor(totalQuestions * 0.4), percentage: 40 }
       ];
 
-      // Real topic analysis
-      const topicAnalysis = topicData.slice(0, 10).map((item) => ({
-        topic: item.name,
-        questionCount: item.value,
-        avgDifficulty: Math.floor(Math.random() * 100) // Would need actual calculation
-      }));
-
       setAnalytics({
-        bloomDistribution,
+        bloomDistribution: bloomData,
         creatorStats: creatorData,
-        timeSeriesData: timelineData,
-        difficultySpread,
+        timeSeriesData: usageData,
+        difficultySpread: difficultyData,
         usageStats,
         approvalStats: approvalData,
         topicAnalysis,
@@ -486,84 +473,32 @@ export const AnalyticsCharts = () => {
           </CardContent>
         </Card>
 
-        {/* Approval Status */}
-        <Card className="bg-gradient-card border-0 shadow-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5" />
-              Approval Status
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {analytics.approvalStats.length > 0 ? (
-              <ChartContainer config={chartConfig} className="max-h-[300px]">
-                <BarChart data={analytics.approvalStats}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
-                  <XAxis 
-                    dataKey="name" 
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                  />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <Bar 
-                    dataKey="value" 
-                    radius={[4, 4, 0, 0]}
-                    fill="hsl(var(--secondary))"
-                  />
-                  <ChartTooltip
-                    content={({ active, payload, label }) => {
-                      if (active && payload && payload.length) {
-                        return (
-                          <div className="rounded-lg border bg-background p-2 shadow-md">
-                            <p className="font-medium">{label}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {payload[0].value} questions
-                            </p>
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                  />
-                </BarChart>
-              </ChartContainer>
-            ) : (
-              <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                No data available
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Secondary Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Topic Analysis */}
+        {/* System Activity Over Time */}
         <Card className="bg-gradient-card border-0 shadow-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Activity className="h-5 w-5" />
-              Topic Analysis (Top 10)
+              Usage Over Time
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {analytics.topicAnalysis.length > 0 ? (
+            {analytics.timeSeriesData.length > 0 ? (
               <ChartContainer config={chartConfig} className="max-h-[300px]">
-                <BarChart data={analytics.topicAnalysis}>
+                <LineChart data={analytics.timeSeriesData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
                   <XAxis 
-                    dataKey="topic" 
+                    dataKey="date" 
                     stroke="hsl(var(--muted-foreground))"
-                    fontSize={10}
-                    angle={-45}
-                    textAnchor="end"
-                    height={60}
+                    fontSize={12}
                   />
                   <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <Bar 
-                    dataKey="questionCount" 
-                    radius={[4, 4, 0, 0]}
-                    fill="hsl(var(--accent))"
+                  <Line 
+                    type="monotone" 
+                    dataKey="count" 
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={2}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
                   />
                   <ChartTooltip
                     content={({ active, payload, label }) => {
@@ -572,7 +507,7 @@ export const AnalyticsCharts = () => {
                           <div className="rounded-lg border bg-background p-2 shadow-md">
                             <p className="font-medium">{label}</p>
                             <p className="text-sm text-muted-foreground">
-                              {payload[0].value} questions
+                              {payload[0].value} activities
                             </p>
                           </div>
                         );
@@ -580,71 +515,7 @@ export const AnalyticsCharts = () => {
                       return null;
                     }}
                   />
-                </BarChart>
-              </ChartContainer>
-            ) : (
-              <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                No data available
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Usage Statistics */}
-        <Card className="bg-gradient-card border-0 shadow-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Question Usage
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {analytics.usageStats.length > 0 ? (
-              <ChartContainer
-                config={chartConfig}
-                className="mx-auto aspect-square max-h-[300px]"
-              >
-                <PieChart>
-                  <Pie
-                    data={analytics.usageStats}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    innerRadius={40}
-                    paddingAngle={2}
-                  >
-                    {analytics.usageStats.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={USAGE_COLORS[entry.name as keyof typeof USAGE_COLORS] || "hsl(var(--muted))"}
-                      />
-                    ))}
-                  </Pie>
-                  <ChartTooltip
-                    content={({ active, payload }) => {
-                      if (active && payload && payload.length > 0) {
-                        const data = payload[0].payload;
-                        return (
-                          <div className="rounded-lg border bg-background p-2 shadow-md">
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="flex flex-col">
-                                <span className="text-[0.70rem] uppercase text-muted-foreground">
-                                  {data.name}
-                                </span>
-                                <span className="font-bold text-muted-foreground">
-                                  {data.value} questions ({data.percentage}%)
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                  />
-                </PieChart>
+                </LineChart>
               </ChartContainer>
             ) : (
               <div className="flex items-center justify-center h-[300px] text-muted-foreground">
@@ -655,32 +526,31 @@ export const AnalyticsCharts = () => {
         </Card>
       </div>
 
-      {/* Time Series Chart */}
-      {analytics.timeSeriesData.length > 0 && (
+      {/* Topic Analysis */}
+      {analytics.topicAnalysis.length > 0 && (
         <Card className="bg-gradient-card border-0 shadow-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
-              System Activity Over Time (Last 14 Days)
+              <Target className="h-5 w-5" />
+              Top Topics by Question Count
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={chartConfig} className="max-h-[300px]">
-              <LineChart data={analytics.timeSeriesData}>
+            <ChartContainer config={chartConfig} className="max-h-[400px]">
+              <BarChart data={analytics.topicAnalysis} layout="horizontal">
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
-                <XAxis 
-                  dataKey="date" 
-                  stroke="hsl(var(--muted-foreground))"
+                <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                <YAxis 
+                  type="category" 
+                  dataKey="topic" 
+                  stroke="hsl(var(--muted-foreground))" 
                   fontSize={12}
+                  width={120}
                 />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                <Line 
-                  type="monotone" 
-                  dataKey="count" 
-                  stroke="hsl(var(--primary))" 
-                  strokeWidth={2}
-                  dot={{ fill: "hsl(var(--primary))", strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, stroke: "hsl(var(--primary))", strokeWidth: 2 }}
+                <Bar 
+                  dataKey="questionCount" 
+                  radius={[0, 4, 4, 0]}
+                  fill="hsl(var(--primary))"
                 />
                 <ChartTooltip
                   content={({ active, payload, label }) => {
@@ -689,7 +559,7 @@ export const AnalyticsCharts = () => {
                         <div className="rounded-lg border bg-background p-2 shadow-md">
                           <p className="font-medium">{label}</p>
                           <p className="text-sm text-muted-foreground">
-                            {payload[0].value} activities
+                            {payload[0].value} questions ({payload[0].payload?.approvalRate}% approved)
                           </p>
                         </div>
                       );
@@ -697,7 +567,7 @@ export const AnalyticsCharts = () => {
                     return null;
                   }}
                 />
-              </LineChart>
+              </BarChart>
             </ChartContainer>
           </CardContent>
         </Card>
@@ -705,3 +575,5 @@ export const AnalyticsCharts = () => {
     </div>
   );
 };
+
+export default AnalyticsCharts;
