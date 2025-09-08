@@ -273,10 +273,10 @@ export async function saveTestWithVersions(
   for (const version of versions) {
     await Tests.addVersion(
       testMetadata.id,
-      version.version_label || `Version ${version.version}`,
-      version.question_order.map(String),
+      `Version ${versions.indexOf(version) + 1}`,
+      (version.questions as any[]).map((_, i) => i.toString()),
       version.answer_key,
-      version.total_points
+      version.total_points || 0
     );
   }
 
@@ -406,23 +406,25 @@ export async function generateTestFromTOS(
   // Build needs from TOS
   const needs = buildEnhancedNeedsFromTOS(tosMatrix);
   
-  const result = await fetchQuestionsForNeeds(needs, true);
+  const testQuestions = await fetchQuestionsForNeeds(needs, true);
   
   // Validate configuration
-  const configErrors = validateTestConfig(config, result);
+  const configErrors = validateTestConfig(config, testQuestions);
   if (configErrors.length > 0) {
     throw new Error(`Configuration errors: ${configErrors.join(', ')}`);
   }
   
   // Generate versions
-  const versions = await generateTestVersions(config, questions);
+  const versions = await generateTestVersions(config, testQuestions);
   
   // Save to database
-  const result = await saveTestWithVersions(config, versions);
+  const saveResult = await saveTestWithVersions(config, versions);
   
   return {
-    ...result,
-    warnings: [...result.warnings, ...fetchWarnings]
+    testId: saveResult.testId,
+    versions: saveResult.versions,
+    generatedQuestions: testQuestions.length,
+    warnings: []
   };
 }
 

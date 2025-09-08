@@ -102,9 +102,15 @@ export const Rubrics = {
   },
 
   async update(id: string, patch: Partial<Rubric>) {
+    // Convert criteria to Json format for database
+    const updateData: any = { ...patch };
+    if (updateData.criteria) {
+      updateData.criteria = updateData.criteria as any;
+    }
+    
     const { data, error } = await supabase
       .from("rubrics")
-      .update(patch)
+      .update(updateData)
       .eq("id", id)
       .select()
       .single();

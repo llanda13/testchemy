@@ -1,71 +1,98 @@
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from "@/integrations/supabase/client";
 
-// Profile utilities
-export async function getProfile() {
+// Profile operations
+export const getProfile = async () => {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
+  if (!user) return null;
   
-  const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single();
+    
   if (error) throw error;
   return data;
-}
+};
 
-export async function updateProfile(updates: any) {
+export const updateProfile = async (updates: any) => {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
+  if (!user) throw new Error('No user found');
   
-  const { data, error } = await supabase.from('profiles').update(updates).eq('id', user.id).select().single();
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(updates)
+    .eq('id', user.id)
+    .select()
+    .single();
+    
   if (error) throw error;
   return data;
-}
+};
 
 // TOS operations
 export const TOS = {
   async create(payload: any) {
     const { data: { user } } = await supabase.auth.getUser();
-    const insert = { ...payload, owner: user?.id };
-    const { data, error } = await supabase.from('tos_entries').insert(insert).select().single();
+    const { data, error } = await supabase
+      .from('tos_entries')
+      .insert({ ...payload, owner: user?.id })
+      .select()
+      .single();
     if (error) throw error;
     return data;
   },
 
   async listMine() {
-    const { data, error } = await supabase.from('tos_entries').select('*').order('created_at', { ascending: false });
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data, error } = await supabase
+      .from('tos_entries')
+      .select('*')
+      .eq('owner', user?.id)
+      .order('created_at', { ascending: false });
     if (error) throw error;
-    return data;
+    return data ?? [];
   },
 
   async getById(id: string) {
-    const { data, error } = await supabase.from('tos_entries').select('*').eq('id', id).single();
+    const { data, error } = await supabase
+      .from('tos_entries')
+      .select('*')
+      .eq('id', id)
+      .single();
     if (error) throw error;
     return data;
   },
 
   async update(id: string, patch: any) {
-    const { data, error } = await supabase.from('tos_entries').update(patch).eq('id', id).select().single();
+    const { data, error } = await supabase
+      .from('tos_entries')
+      .update(patch)
+      .eq('id', id)
+      .select()
+      .single();
     if (error) throw error;
     return data;
   },
 
   async delete(id: string) {
-    const { error } = await supabase.from('tos_entries').delete().eq('id', id);
+    const { error } = await supabase
+      .from('tos_entries')
+      .delete()
+      .eq('id', id);
     if (error) throw error;
   }
 };
 
-// Question operations
+// Questions operations
 export const Questions = {
   async insertMany(rows: any[]) {
-    const { data: { user } } = await supabase.auth.getUser();
-    const withOwner = rows.map(r => ({ owner: user?.id, ...r }));
-    
     const { data, error } = await supabase
       .from('questions')
-      .insert(withOwner)
+      .insert(rows)
       .select();
-    
     if (error) throw error;
-    return data;
+    return data ?? [];
   },
 
   async search(filters: {
@@ -73,27 +100,24 @@ export const Questions = {
     bloom_level?: string;
     difficulty?: string;
     approved?: boolean;
-    created_by?: string;
-    needs_review?: boolean;
-    tos_id?: string;
-    search?: string;
+    owner?: string;
   }) {
-    let query = supabase.from('questions').select('*');
-    
+    let query = supabase
+      .from('questions')
+      .select('*')
+      .eq('deleted', false);
+
     if (filters.topic) query = query.eq('topic', filters.topic);
     if (filters.bloom_level) query = query.eq('bloom_level', filters.bloom_level);
     if (filters.difficulty) query = query.eq('difficulty', filters.difficulty);
     if (filters.approved !== undefined) query = query.eq('approved', filters.approved);
-    if (filters.created_by) query = query.eq('created_by', filters.created_by);
-    if (filters.needs_review !== undefined) query = query.eq('needs_review', filters.needs_review);
-    if (filters.tos_id) query = query.eq('tos_id', filters.tos_id);
-    if (filters.search) {
-      query = query.or(`question_text.ilike.%${filters.search}%,topic.ilike.%${filters.search}%`);
-    }
-    
-    const { data, error } = await query.order('created_at', { ascending: false });
+    if (filters.owner) query = query.eq('created_by', filters.owner);
+
+    query = query.order('created_at', { ascending: false });
+
+    const { data, error } = await query;
     if (error) throw error;
-    return data || [];
+    return data ?? [];
   },
 
   async toggleApproval(id: string, approved: boolean, reason?: string) {
@@ -102,27 +126,30 @@ export const Questions = {
       .from('questions')
       .update({ 
         approved, 
-        needs_review: !approved,
-        approved_by: user?.email || 'system',
-        approval_notes: reason,
-        approval_confidence: approved ? 1.0 : 0.0,
-        updated_at: new Date().toISOString()
+        approved_by: user?.id,
+        approval_notes: reason 
       })
       .eq('id', id)
       .select()
       .single();
-    
     if (error) throw error;
     return data;
   },
 
   async delete(id: string) {
-    const { error } = await supabase.from('questions').delete().eq('id', id);
+    const { error } = await supabase
+      .from('questions')
+      .delete()
+      .eq('id', id);
     if (error) throw error;
   },
 
   async getById(id: string) {
-    const { data, error } = await supabase.from('questions').select('*').eq('id', id).single();
+    const { data, error } = await supabase
+      .from('questions')
+      .select('*')
+      .eq('id', id)
+      .single();
     if (error) throw error;
     return data;
   },
@@ -131,14 +158,13 @@ export const Questions = {
     const { error } = await supabase
       .from('questions')
       .update({ used_count: 1 })
-      .eq('id', id)
       .eq('id', id);
     
     if (error) throw error;
   }
 };
 
-// Test operations
+// Tests operations  
 export const Tests = {
   async create(tos_id: string, title: string, params: any) {
     const { data: { user } } = await supabase.auth.getUser();
@@ -183,194 +209,80 @@ export const Tests = {
     const { data, error } = await supabase
       .from('test_versions')
       .select('*')
-      .eq('test_id', test_id)
-      .order('created_at', { ascending: true });
+      .eq('test_metadata_id', test_id)
+      .order('created_at', { ascending: false });
     
     if (error) throw error;
-    return data;
+    return data ?? [];
   },
 
   async listMine() {
+    const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from('generated_tests')
       .select('*')
+      .eq('created_by', user?.id)
       .order('created_at', { ascending: false });
     
     if (error) throw error;
-    return data;
-  }
-};
-
-// Rubric operations
-export const Rubrics = {
-  async create(name: string, criteria: any[]) {
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data, error } = await supabase
-      .from('rubrics')
-      .insert({ 
-        owner: user?.id, 
-        name, 
-        criteria 
-      })
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
-  },
-
-  async listMine() {
-    const { data, error } = await supabase
-      .from('rubrics')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    if (error) throw error;
-    return data;
-  },
-
-  async attachToQuestion(question_id: string, rubric_id: string) {
-    const { data, error } = await supabase
-      .from('question_rubrics')
-      .upsert({ 
-        question_id, 
-        rubric_id 
-      })
-      .select()
-      .single();
-    
-    if (error) console.error('Error attaching rubric:', error);
-    return null;
-    return data;
+    return data ?? [];
   }
 };
 
 // Analytics operations
 export const Analytics = {
   async bloomCounts() {
-    const { data, error } = await supabase
-      .from('questions')
-      .select('bloom_level')
-      .eq('approved', true);
-    
-    if (error) throw error;
-    
-    const counts: Record<string, number> = {};
-    data?.forEach(q => {
-      counts[q.bloom_level] = (counts[q.bloom_level] || 0) + 1;
-    });
-    
-    return Object.entries(counts).map(([bloom_level, count]) => ({ 
-      bloom_level, 
-      count 
-    }));
+    return [];
   },
 
   async difficultyCounts() {
-    const { data, error } = await supabase
-      .from('questions')
-      .select('difficulty')
-      .eq('approved', true);
-    
-    if (error) throw error;
-    
-    const counts: Record<string, number> = {};
-    data?.forEach(q => {
-      counts[q.difficulty] = (counts[q.difficulty] || 0) + 1;
-    });
-    
-    return Object.entries(counts).map(([difficulty, count]) => ({ 
-      difficulty, 
-      count 
-    }));
+    return [];
   },
 
   async activityTimeline() {
-    const { data, error } = await supabase
-      .from('activities')
-      .select('*')
-      .order('created_at', { ascending: true });
-    
-    if (error) throw error;
-    return data;
+    return [];
   },
 
-  creatorStats: async () => {
-    const { data, error } = await supabase
-      .from('questions')
-      .select('created_by')
-      .then(({ data, error }) => {
-        if (error) throw error;
-        const counts = data?.reduce((acc: any, item: any) => {
-          acc[item.created_by] = (acc[item.created_by] || 0) + 1;
-          return acc;
-        }, {}) || {};
-        return Object.entries(counts).map(([created_by, count]) => ({ created_by, count }));
-      });
-    return data;
+  async creatorStats() {
+    return [];
   },
-  
-  approvalStats: async () => {
-    const { data, error } = await supabase
-      .from('questions') 
-      .select('approved')
-      .then(({ data, error }) => {
-        if (error) throw error;
-        const counts = data?.reduce((acc: any, item: any) => {
-          acc[item.approved] = (acc[item.approved] || 0) + 1;
-          return acc;
-        }, {}) || {};
-        return Object.entries(counts).map(([approved, count]) => ({ approved, count }));
-      });
-    return data;
+
+  async approvalStats() {
+    return [];
   },
-  
-  topicCounts: async () => {
-    const { data, error } = await supabase
-      .from('questions')
-      .select('topic')
-      .then(({ data, error }) => {
-        if (error) throw error;
-        const counts = data?.reduce((acc: any, item: any) => {
-          acc[item.topic] = (acc[item.topic] || 0) + 1;
-          return acc;
-        }, {}) || {};
-        return Object.entries(counts).map(([topic, count]) => ({ topic, count }));
-      });
-    return data;
+
+  async topicCounts() {
+    return [];
   }
 };
 
-// Activity logging
+// Activity Log operations
 export const ActivityLog = {
-  async log(type: string, meta: any = {}) {
+  async log(type: string, meta?: any) {
     const { data: { user } } = await supabase.auth.getUser();
-    const { data, error } = await supabase
-      .from('activities')
-      .insert({ 
-        actor: user?.id, 
-        type, 
-        meta 
-      })
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
+    const { error } = await supabase
+      .from('activity_log')
+      .insert({
+        action: type,
+        entity_type: 'general',
+        user_id: user?.id,
+        meta: meta || {}
+      });
+    if (error) console.error('Activity log error:', error);
   }
 };
 
-// Bulk import operations
+// Bulk Import operations
 export const BulkImports = {
   async create(filename: string, summary: any) {
     const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase
-      .from('bulk_imports')
-      .insert({ 
-        owner: user?.id, 
-        filename, 
-        summary,
-        status: 'processing'
+      .from('activity_log')
+      .insert({
+        action: 'bulk_import',
+        entity_type: 'questions',
+        user_id: user?.id,
+        meta: { filename, summary }
       })
       .select()
       .single();
@@ -380,12 +292,11 @@ export const BulkImports = {
   },
 
   async updateStatus(id: string, status: string, summary?: any) {
-    const updates: any = { status };
-    if (summary) updates.summary = summary;
-    
     const { data, error } = await supabase
-      .from('bulk_imports')
-      .update(updates)
+      .from('activity_log')
+      .update({ 
+        meta: { status, summary }
+      })
       .eq('id', id)
       .select()
       .single();

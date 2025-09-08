@@ -8,7 +8,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FileText, Download, Eye, ArrowLeft, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { RubricAnswerKey } from "./RubricAnswerKey";
-import { Questions, Tests, Rubrics } from "@/services/db";
+import { Questions, Tests } from "@/services/db";
+import { Rubrics } from "@/services/db/rubrics";
 import { buildNeedsFromTOS, fetchQuestionsForNeeds, generateTestFromTOS } from "@/lib/testGenerator";
 import { exportTestVersion, exportAnswerKey } from "@/lib/pdfExport";
 

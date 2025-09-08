@@ -20,7 +20,8 @@ import {
   Target
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Rubrics, ActivityLog } from "@/services/db";
+import { ActivityLog } from "@/services/db";
+import { Rubrics } from "@/services/db/rubrics";
 import { RubricPrintout } from "./RubricPrintout";
 
 interface Criterion {

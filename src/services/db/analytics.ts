@@ -149,7 +149,7 @@ export const Analytics = {
       .single();
     
     if (error) throw error;
-    return data?.matrix ?? {};
+    return (data?.matrix ?? {}) as Record<string, Record<string, number>>;
   },
 
   async getQuestionBankSufficiency(tosId: string) {

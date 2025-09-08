@@ -138,7 +138,6 @@ export const QuestionBank = ({ onBack }: QuestionBankProps) => {
           selectedDifficulty && selectedDifficulty !== 'all'
             ? selectedDifficulty
             : undefined,
-        search: searchTerm || undefined,
       });
 
       const transformedQuestions: Question[] = data.map((q) => {
