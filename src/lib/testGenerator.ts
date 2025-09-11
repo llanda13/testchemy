@@ -255,48 +255,45 @@ export async function generateTestVersions(
 }
 
 /**
- * Save test with multiple versions to database
+ * Save test with multiple versions to database using GeneratedTests service
  */
 export async function saveTestWithVersions(
   config: TestConfiguration,
   versions: TestVersion[]
 ): Promise<TestGenerationResult> {
-  // Create test metadata
-  const testMetadata = await Tests.create(config.tos_id || '', config.title, {
-    subject: config.subject || 'General',
-    instructions: config.instructions || '',
-    num_versions: config.number_of_versions || 1,
-    versions: [],
-    answer_keys: []
-  });
-  // Save test versions
-  for (const version of versions) {
-    await Tests.addVersion(
-      testMetadata.id,
-      `Version ${versions.indexOf(version) + 1}`,
-      (version.questions as any[]).map((_, i) => i.toString()),
-      version.answer_key,
-      version.total_points || 0
-    );
-  }
+  // Import GeneratedTests service dynamically to avoid circular dependencies
+  const { GeneratedTests } = await import('@/services/db/generatedTests');
+  
+  // Create separate database entries for each version
+  const versionConfigs = versions.map((version, index) => ({
+    title: config.title,
+    subject: config.subject,
+    course: config.course,
+    year_section: config.year_section,
+    exam_period: config.exam_period,
+    school_year: config.school_year,
+    instructions: config.instructions,
+    tos_id: config.tos_id,
+    time_limit: config.time_limit,
+    points_per_question: config.points_per_question,
+    num_versions: config.number_of_versions,
+    versions: [version.questions],
+    answer_keys: [version.answer_key],
+    shuffle_questions: config.shuffle_questions,
+    shuffle_choices: config.shuffle_choices,
+    version_label: version.version_label,
+    version_number: index + 1
+  }));
 
-  // Save each version
-  for (const version of versions) {
-    await Tests.addVersion(
-      testMetadata.id,
-      version.version_label,
-      version.questions,
-      version.answer_key,
-      version.total_points
-    );
-  }
+  // Save all versions to database
+  const savedVersions = await GeneratedTests.createMultipleVersions(versionConfigs);
 
-  await ActivityLog.log('generate_test', 'test_metadata');
+  await ActivityLog.log('generate_test', 'generated_tests');
 
   const generatedQuestions = versions[0]?.questions.filter(q => q.created_by === 'ai').length || 0;
   
   return {
-    testId: testMetadata.id,
+    testId: savedVersions[0]?.id || '',
     versions,
     generatedQuestions,
     warnings: generatedQuestions > 0 ? [`Generated ${generatedQuestions} AI questions due to insufficient question bank`] : []

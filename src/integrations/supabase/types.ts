@@ -239,6 +239,8 @@ export type Database = {
           time_limit: number | null
           title: string
           tos_id: string | null
+          version_label: string | null
+          version_number: number | null
           versions: Json
           year_section: string | null
         }
@@ -259,6 +261,8 @@ export type Database = {
           time_limit?: number | null
           title: string
           tos_id?: string | null
+          version_label?: string | null
+          version_number?: number | null
           versions: Json
           year_section?: string | null
         }
@@ -279,6 +283,8 @@ export type Database = {
           time_limit?: number | null
           title?: string
           tos_id?: string | null
+          version_label?: string | null
+          version_number?: number | null
           versions?: Json
           year_section?: string | null
         }

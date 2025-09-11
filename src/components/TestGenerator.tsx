@@ -31,10 +31,12 @@ interface GeneratedQuestion {
 export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedTest, setGeneratedTest] = useState<GeneratedQuestion[] | null>(null);
+  const [generatedVersions, setGeneratedVersions] = useState<any[]>([]);
   const [rubrics, setRubrics] = useState<Record<string, any>>({});
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStatus, setGenerationStatus] = useState("");
   const [generationWarnings, setGenerationWarnings] = useState<string[]>([]);
+  const [numVersions, setNumVersions] = useState(1);
 
   // Mock TOS data - this would come from the actual TOS Builder
   const mockTOS = {
@@ -171,9 +173,9 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
         instructions: "Read each question carefully and select the best answer.",
         time_limit: 60,
         points_per_question: 1,
-        shuffle_questions: false,
-        shuffle_choices: false,
-        number_of_versions: 1
+        shuffle_questions: true,
+        shuffle_choices: true,
+        number_of_versions: numVersions
       };
       
       setGenerationProgress(40);
@@ -201,9 +203,10 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
       setGenerationStatus("Test generation complete!");
       
       setGeneratedTest(transformedQuestions);
+      setGeneratedVersions(result.versions);
       setGenerationWarnings(result.warnings);
       
-      toast.success("Test generated successfully!");
+      toast.success(`Test generated successfully with ${result.versions.length} version(s)!`);
       
       if (result.generatedQuestions > 0) {
         toast.info(`Generated ${result.generatedQuestions} new AI questions to fill gaps`);
@@ -263,6 +266,29 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
           toast.error("Failed to export answer key");
         });
     }
+  };
+
+  const handleExportVersion = (versionLabel: string, isAnswerKey: boolean) => {
+    const exportFunc = isAnswerKey ? exportAnswerKey : exportTestVersion;
+    const fileType = isAnswerKey ? 'answer_key' : 'test';
+    
+    exportFunc('current-test', versionLabel, false)
+      .then(({ blob }) => {
+        const filename = `${mockTOS.formData.subject.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_version_${versionLabel}_${fileType}.pdf`;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success(`Version ${versionLabel} ${isAnswerKey ? 'answer key' : 'test'} exported as PDF!`);
+      })
+      .catch(error => {
+        console.error('Export error:', error);
+        toast.error(`Failed to export version ${versionLabel}`);
+      });
   };
 
   const easyQuestions = generatedTest?.filter(q => q.difficulty === 'Easy') || [];
@@ -332,6 +358,26 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
                   The system will use approved questions from the bank and generate AI questions for any gaps.
                 </p>
               </div>
+
+              {/* Version Selection */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Number of Versions</label>
+                <select 
+                  value={numVersions} 
+                  onChange={(e) => setNumVersions(parseInt(e.target.value))}
+                  className="border rounded-md px-3 py-2 w-32"
+                  disabled={isGenerating}
+                >
+                  <option value={1}>1 Version</option>
+                  <option value={2}>2 Versions (A, B)</option>
+                  <option value={3}>3 Versions (A, B, C)</option>
+                  <option value={4}>4 Versions (A, B, C, D)</option>
+                  <option value={5}>5 Versions (A, B, C, D, E)</option>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Each version will have shuffled questions and answer choices
+                </p>
+              </div>
               
               {isGenerating && (
                 <div className="space-y-4">
@@ -351,7 +397,7 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
                 disabled={isGenerating}
                 className="px-8"
               >
-                {isGenerating ? "Generating..." : "🧠 Generate Test Questions"}
+                {isGenerating ? "Generating..." : `🧠 Generate ${numVersions > 1 ? `${numVersions} Test Versions` : 'Test Questions'}`}
               </Button>
             </div>
           </CardContent>
@@ -378,23 +424,66 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
             </Alert>
           )}
           
-          {/* Export Actions */}
+          {/* Version Export Actions */}
           <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-wrap gap-4 justify-center">
-                <Button variant="outline" onClick={handleExportTest}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export Test (PDF)
-                </Button>
-                <Button variant="outline" onClick={handleExportAnswerKey}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export Answer Key (PDF)
-                </Button>
-                <Button variant="outline">
-                  <Eye className="h-4 w-4 mr-2" />
-                  Preview Test
-                </Button>
-              </div>
+            <CardHeader>
+              <CardTitle>Test Versions ({generatedVersions.length} Generated)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {generatedVersions.length > 1 ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Each version has shuffled questions and answer choices. Select a version to download:
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {generatedVersions.map((version, index) => (
+                      <Card key={version.version_label} className="border-2">
+                        <CardContent className="pt-4">
+                          <div className="text-center space-y-2">
+                            <h4 className="font-semibold">Version {version.version_label}</h4>
+                            <p className="text-xs text-muted-foreground">
+                              {version.questions.length} questions • {version.total_points} points
+                            </p>
+                            <div className="flex flex-col gap-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => handleExportVersion(version.version_label, false)}
+                              >
+                                <Download className="h-3 w-3 mr-1" />
+                                Test PDF
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => handleExportVersion(version.version_label, true)}
+                              >
+                                <Download className="h-3 w-3 mr-1" />
+                                Answer Key
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-4 justify-center">
+                  <Button variant="outline" onClick={handleExportTest}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export Test (PDF)
+                  </Button>
+                  <Button variant="outline" onClick={handleExportAnswerKey}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export Answer Key (PDF)
+                  </Button>
+                  <Button variant="outline">
+                    <Eye className="h-4 w-4 mr-2" />
+                    Preview Test
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
 
