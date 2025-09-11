@@ -82,22 +82,22 @@ export const QuestionBank = ({ onBack }: QuestionBankProps) => {
     email: 'user@example.com' // Should come from auth context
   });
 
-  // Real-time question updates
-  useRealtime('question-bank-updates', {
-    table: 'questions',
-    onInsert: (newQuestion) => {
-      toast.info(`New question added by collaborator: "${newQuestion.question_text.substring(0, 50)}..."`);
-      fetchQuestions();
-    },
-    onUpdate: (updatedQuestion) => {
-      toast.info(`Question updated by collaborator`);
-      fetchQuestions();
-    },
-    onDelete: (deletedQuestion) => {
-      toast.info(`Question deleted by collaborator`);
-      fetchQuestions();
-    }
-  });
+  // Remove duplicate realtime subscription since useRealtimeQuestions already handles this
+  // useRealtime('question-bank-updates', {
+  //   table: 'questions',
+  //   onInsert: (newQuestion) => {
+  //     toast.info(`New question added by collaborator: "${newQuestion.question_text.substring(0, 50)}..."`);
+  //     fetchQuestions();
+  //   },
+  //   onUpdate: (updatedQuestion) => {
+  //     toast.info(`Question updated by collaborator`);
+  //     fetchQuestions();
+  //   },
+  //   onDelete: (deletedQuestion) => {
+  //     toast.info(`Question deleted by collaborator`);
+  //     fetchQuestions();
+  //   }
+  // });
 
   useEffect(() => {
     setRealtimeStatus(isConnected ? 'Connected' : 'Disconnected');

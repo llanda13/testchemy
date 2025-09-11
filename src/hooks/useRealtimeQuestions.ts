@@ -63,14 +63,18 @@ export function useRealtimeQuestions(initialFilters?: QuestionFilters) {
     setFilters({});
   }, []);
 
-  // Set up real-time subscription using the new hook
-  useRealtime('questions-realtime', {
+  // Set up real-time subscription using a unique channel name
+  useRealtime('questions-realtime-hook', {
     table: 'questions',
     onChange: (payload) => {
       console.log('Question change detected:', payload);
       setLastUpdate(new Date().toISOString());
-      // Trigger a refresh when any question changes
-      fetchQuestions();
+      // Debounce the refresh to avoid too many API calls
+      const timeoutId = setTimeout(() => {
+        fetchQuestions();
+      }, 500);
+      
+      return () => clearTimeout(timeoutId);
     }
   });
 

@@ -51,35 +51,60 @@ export function useRealtime(channelName: string, options: UseRealtimeOptions) {
 
   useEffect(() => {
     let channel: RealtimeChannel;
+    let mounted = true;
 
-    const setupChannel = () => {
-      channel = supabase.channel(channelName);
+    const setupChannel = async () => {
+      try {
+        // Remove any existing channel with the same name first
+        const existingChannels = supabase.getChannels();
+        const existingChannel = existingChannels.find(ch => ch.topic === channelName);
+        if (existingChannel) {
+          await supabase.removeChannel(existingChannel);
+        }
 
-      // Set up postgres changes subscription
-      const changeConfig: any = {
-        event: '*',
-        schema: 'public',
-        table
-      };
+        channel = supabase.channel(channelName);
 
-      if (filter) {
-        changeConfig.filter = filter;
+        // Set up postgres changes subscription
+        const changeConfig: any = {
+          event: '*',
+          schema: 'public',
+          table
+        };
+
+        if (filter) {
+          changeConfig.filter = filter;
+        }
+
+        channel
+          .on('postgres_changes', changeConfig, (payload) => {
+            if (mounted) {
+              handleChange(payload);
+            }
+          })
+          .subscribe((status) => {
+            if (!mounted) return;
+            
+            if (status === 'SUBSCRIBED') {
+              console.log(`Subscribed to realtime updates for ${table}`);
+            } else if (status === 'CHANNEL_ERROR') {
+              console.error(`Failed to subscribe to ${table} updates`);
+              // Retry connection after a short delay
+              setTimeout(() => {
+                if (mounted) {
+                  setupChannel();
+                }
+              }, 2000);
+            }
+          });
+      } catch (error) {
+        console.error(`Error setting up realtime channel for ${table}:`, error);
       }
-
-      channel
-        .on('postgres_changes', changeConfig, handleChange)
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            console.log(`Subscribed to realtime updates for ${table}`);
-          } else if (status === 'CHANNEL_ERROR') {
-            console.error(`Failed to subscribe to ${table} updates`);
-          }
-        });
     };
 
     setupChannel();
 
     return () => {
+      mounted = false;
       if (channel) {
         supabase.removeChannel(channel);
       }
