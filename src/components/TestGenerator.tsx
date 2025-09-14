@@ -5,13 +5,15 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { FileText, Download, Eye, ArrowLeft, AlertTriangle } from "lucide-react";
+import { FileText, Download, Upload, Eye, ArrowLeft, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { RubricAnswerKey } from "./RubricAnswerKey";
 import { Questions, Tests } from "@/services/db";
 import { Rubrics } from "@/services/db/rubrics";
 import { buildNeedsFromTOS, fetchQuestionsForNeeds, generateTestFromTOS } from "@/lib/testGenerator";
 import { exportTestVersion, exportAnswerKey } from "@/lib/pdfExport";
+import { usePDFExport } from "@/hooks/usePDFExport";
+import { supabase } from "@/integrations/supabase/client";
 
 interface TestGeneratorProps {
   onBack: () => void;
@@ -37,6 +39,8 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
   const [generationStatus, setGenerationStatus] = useState("");
   const [generationWarnings, setGenerationWarnings] = useState<string[]>([]);
   const [numVersions, setNumVersions] = useState(1);
+
+  const { exportTestQuestions } = usePDFExport();
 
   // Mock TOS data - this would come from the actual TOS Builder
   const mockTOS = {
@@ -268,27 +272,69 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
     }
   };
 
-  const handleExportVersion = (versionLabel: string, isAnswerKey: boolean) => {
-    const exportFunc = isAnswerKey ? exportAnswerKey : exportTestVersion;
-    const fileType = isAnswerKey ? 'answer_key' : 'test';
-    
-    exportFunc('current-test', versionLabel, false)
-      .then(({ blob }) => {
-        const filename = `${mockTOS.formData.subject.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_version_${versionLabel}_${fileType}.pdf`;
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        toast.success(`Version ${versionLabel} ${isAnswerKey ? 'answer key' : 'test'} exported as PDF!`);
-      })
-      .catch(error => {
-        console.error('Export error:', error);
-        toast.error(`Failed to export version ${versionLabel}`);
-      });
+  const handleExportVersion = async (versionLabel: string, isAnswerKey: boolean, uploadToCloud: boolean = false) => {
+    // Find the test version
+    const version = generatedVersions?.find(v => v.version_label === versionLabel);
+    if (!version) {
+      toast.error('Test version not found');
+      return;
+    }
+
+    try {
+      const testTitle = `${mockTOS.formData.subject} - Version ${versionLabel}${isAnswerKey ? ' Answer Key' : ''}`;
+      
+      if (isAnswerKey) {
+        // Use lib function for answer key
+        const result = await exportAnswerKey('current-test', versionLabel, uploadToCloud);
+        if (uploadToCloud && result.storageUrl) {
+          toast.success(`Answer Key Version ${versionLabel} uploaded to cloud storage!`);
+        } else {
+          const filename = `${mockTOS.formData.subject.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_version_${versionLabel}_answer_key.pdf`;
+          const url = URL.createObjectURL(result.blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          toast.success(`Answer key exported as PDF!`);
+        }
+      } else {
+        // Use hook for test questions
+        const result = await exportTestQuestions(
+          version.questions,
+          testTitle,
+          uploadToCloud,
+          versionLabel
+        );
+        
+        if (result && typeof result === 'object' && result.success) {
+          if (uploadToCloud && 'storageUrl' in result && result.storageUrl) {
+            toast.success(`Version ${versionLabel} uploaded to cloud storage!`);
+            
+            // Track export in database
+            try {
+              await supabase
+                .from('test_exports')
+                .insert({
+                  test_version_id: version.id,
+                  export_type: 'pdf',
+                  file_name: result.filename,
+                  exported_by: 'teacher'
+                });
+            } catch (error) {
+              console.warn('Failed to track export in database:', error);
+            }
+          } else {
+            toast.success(`Version ${versionLabel} exported successfully!`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error(`Failed to export version ${versionLabel}`);
+    }
   };
 
   const easyQuestions = generatedTest?.filter(q => q.difficulty === 'Easy') || [];
@@ -444,24 +490,36 @@ export const TestGenerator = ({ onBack }: TestGeneratorProps) => {
                             <p className="text-xs text-muted-foreground">
                               {version.questions.length} questions • {version.total_points} points
                             </p>
-                            <div className="flex flex-col gap-2">
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => handleExportVersion(version.version_label, false)}
-                              >
-                                <Download className="h-3 w-3 mr-1" />
-                                Test PDF
-                              </Button>
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => handleExportVersion(version.version_label, true)}
-                              >
-                                <Download className="h-3 w-3 mr-1" />
-                                Answer Key
-                              </Button>
-                            </div>
+                             <div className="flex flex-col gap-2">
+                               <div className="flex gap-1">
+                                 <Button 
+                                   variant="outline" 
+                                   size="sm"
+                                   onClick={() => handleExportVersion(version.version_label, false, false)}
+                                   className="flex-1"
+                                 >
+                                   <Download className="h-3 w-3 mr-1" />
+                                   Download
+                                 </Button>
+                                 <Button 
+                                   size="sm"
+                                   onClick={() => handleExportVersion(version.version_label, false, true)}
+                                   className="flex-1"
+                                 >
+                                   <Upload className="h-3 w-3 mr-1" />
+                                   To Cloud
+                                 </Button>
+                               </div>
+                               <Button 
+                                 variant="outline" 
+                                 size="sm"
+                                 onClick={() => handleExportVersion(version.version_label, true, false)}
+                                 className="text-xs"
+                               >
+                                 <Download className="h-3 w-3 mr-1" />
+                                 Answer Key
+                               </Button>
+                             </div>
                           </div>
                         </CardContent>
                       </Card>
