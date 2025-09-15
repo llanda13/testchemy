@@ -1,5 +1,8 @@
 import { Layout } from "@/components/layout/Layout";
 import AnalyticsCharts from "@/components/AnalyticsCharts";
+import EnhancedQuestionBank from "@/components/EnhancedQuestionBank";
+import { CollaborativeDocumentManager } from "@/components/CollaborativeDocumentManager";
+import { TestVersionComparison } from "@/components/TestVersionComparison";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   BarChart3, 
@@ -44,24 +47,24 @@ export default function Analytics() {
           </TabsContent>
 
           <TabsContent value="approval">
-            <div className="text-center p-8">
-              <h3 className="text-lg font-semibold mb-2">AI Approval Workflow</h3>
-              <p className="text-muted-foreground">AI approval features temporarily disabled for stability</p>
-            </div>
+            <EnhancedQuestionBank onBack={() => {}} />
           </TabsContent>
 
           <TabsContent value="collaboration">
-            <div className="text-center p-8">
-              <h3 className="text-lg font-semibold mb-2">Collaborative Document Manager</h3>
-              <p className="text-muted-foreground">Real-time collaboration features coming soon</p>
-            </div>
+            <CollaborativeDocumentManager 
+              documentId="analytics-demo"
+              documentType="question"
+              documentTitle="Analytics Dashboard"
+              currentUserEmail="demo@example.com"
+              isOwner={true}
+            />
           </TabsContent>
 
           <TabsContent value="versions">
-            <div className="text-center p-8">
-              <h3 className="text-lg font-semibold mb-2">Multi-Version Test Generator</h3>
-              <p className="text-muted-foreground">Multi-version features temporarily disabled for stability</p>
-            </div>
+            <TestVersionComparison 
+              versions={[]}
+              originalQuestions={[]}
+            />
           </TabsContent>
         </Tabs>
       </div>

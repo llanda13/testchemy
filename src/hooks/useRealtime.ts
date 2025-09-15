@@ -88,12 +88,14 @@ export function useRealtime(channelName: string, options: UseRealtimeOptions) {
               console.log(`Subscribed to realtime updates for ${table}`);
             } else if (status === 'CHANNEL_ERROR') {
               console.error(`Failed to subscribe to ${table} updates`);
+            } else if (status === 'CLOSED') {
+              console.warn(`Channel closed for ${table}, attempting to reconnect...`);
               // Retry connection after a short delay
               setTimeout(() => {
                 if (mounted) {
                   setupChannel();
                 }
-              }, 2000);
+              }, 3000);
             }
           });
       } catch (error) {
