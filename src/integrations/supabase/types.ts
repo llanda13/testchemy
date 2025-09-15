@@ -909,7 +909,44 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      analytics_approval_stats: {
+        Row: {
+          name: string | null
+          value: number | null
+        }
+        Relationships: []
+      }
+      analytics_bloom_distribution: {
+        Row: {
+          name: string | null
+          percentage: number | null
+          value: number | null
+        }
+        Relationships: []
+      }
+      analytics_creator_stats: {
+        Row: {
+          name: string | null
+          value: number | null
+        }
+        Relationships: []
+      }
+      analytics_difficulty_spread: {
+        Row: {
+          name: string | null
+          percentage: number | null
+          value: number | null
+        }
+        Relationships: []
+      }
+      analytics_topic_analysis: {
+        Row: {
+          approved: number | null
+          count: number | null
+          topic: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       assign_admin_role: {
