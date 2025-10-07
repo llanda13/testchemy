@@ -44,6 +44,44 @@ export type Database = {
         }
         Relationships: []
       }
+      assembly_versions: {
+        Row: {
+          assembly_id: string
+          created_at: string | null
+          id: string
+          metadata: Json | null
+          question_order: string[]
+          shuffle_seed: string | null
+          version_label: string
+        }
+        Insert: {
+          assembly_id: string
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          question_order: string[]
+          shuffle_seed?: string | null
+          version_label: string
+        }
+        Update: {
+          assembly_id?: string
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          question_order?: string[]
+          shuffle_seed?: string | null
+          version_label?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assembly_versions_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "test_assemblies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       classification_validations: {
         Row: {
           created_at: string | null
@@ -232,6 +270,59 @@ export type Database = {
         }
         Relationships: []
       }
+      educational_standards: {
+        Row: {
+          category: string
+          code: string
+          created_at: string | null
+          description: string | null
+          framework: string | null
+          grade_level: string | null
+          id: string
+          metadata: Json | null
+          parent_standard_id: string | null
+          subject_area: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          category: string
+          code: string
+          created_at?: string | null
+          description?: string | null
+          framework?: string | null
+          grade_level?: string | null
+          id?: string
+          metadata?: Json | null
+          parent_standard_id?: string | null
+          subject_area: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string
+          code?: string
+          created_at?: string | null
+          description?: string | null
+          framework?: string | null
+          grade_level?: string | null
+          id?: string
+          metadata?: Json | null
+          parent_standard_id?: string | null
+          subject_area?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "educational_standards_parent_standard_id_fkey"
+            columns: ["parent_standard_id"]
+            isOneToOne: false
+            referencedRelation: "educational_standards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       essay_scores: {
         Row: {
           created_at: string | null
@@ -268,32 +359,87 @@ export type Database = {
       generated_tests: {
         Row: {
           answer_key: Json
+          course: string | null
           created_at: string | null
+          created_by: string | null
+          exam_period: string | null
           id: string
           instructions: string | null
           items: Json
+          parent_test_id: string | null
+          points_per_question: number | null
+          question_order: Json | null
+          school_year: string | null
+          shuffle_choices: boolean | null
+          shuffle_questions: boolean | null
+          shuffle_seed: string | null
+          subject: string | null
+          time_limit: number | null
+          title: string | null
           tos_id: string | null
           version_label: string | null
+          version_number: number | null
+          watermark_data: Json | null
+          year_section: string | null
         }
         Insert: {
           answer_key: Json
+          course?: string | null
           created_at?: string | null
+          created_by?: string | null
+          exam_period?: string | null
           id?: string
           instructions?: string | null
           items: Json
+          parent_test_id?: string | null
+          points_per_question?: number | null
+          question_order?: Json | null
+          school_year?: string | null
+          shuffle_choices?: boolean | null
+          shuffle_questions?: boolean | null
+          shuffle_seed?: string | null
+          subject?: string | null
+          time_limit?: number | null
+          title?: string | null
           tos_id?: string | null
           version_label?: string | null
+          version_number?: number | null
+          watermark_data?: Json | null
+          year_section?: string | null
         }
         Update: {
           answer_key?: Json
+          course?: string | null
           created_at?: string | null
+          created_by?: string | null
+          exam_period?: string | null
           id?: string
           instructions?: string | null
           items?: Json
+          parent_test_id?: string | null
+          points_per_question?: number | null
+          question_order?: Json | null
+          school_year?: string | null
+          shuffle_choices?: boolean | null
+          shuffle_questions?: boolean | null
+          shuffle_seed?: string | null
+          subject?: string | null
+          time_limit?: number | null
+          title?: string | null
           tos_id?: string | null
           version_label?: string | null
+          version_number?: number | null
+          watermark_data?: Json | null
+          year_section?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "generated_tests_parent_test_id_fkey"
+            columns: ["parent_test_id"]
+            isOneToOne: false
+            referencedRelation: "generated_tests"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "generated_tests_tos_id_fkey"
             columns: ["tos_id"]
@@ -405,6 +551,66 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ml_models: {
+        Row: {
+          accuracy_score: number | null
+          created_at: string | null
+          created_by: string | null
+          deployed_at: string | null
+          deprecated_at: string | null
+          f1_score: number | null
+          hyperparameters: Json | null
+          id: string
+          is_active: boolean | null
+          model_name: string
+          model_type: string
+          model_version: string
+          performance_metrics: Json | null
+          precision_score: number | null
+          recall_score: number | null
+          training_data_size: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          accuracy_score?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          deployed_at?: string | null
+          deprecated_at?: string | null
+          f1_score?: number | null
+          hyperparameters?: Json | null
+          id?: string
+          is_active?: boolean | null
+          model_name: string
+          model_type: string
+          model_version: string
+          performance_metrics?: Json | null
+          precision_score?: number | null
+          recall_score?: number | null
+          training_data_size?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          accuracy_score?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          deployed_at?: string | null
+          deprecated_at?: string | null
+          f1_score?: number | null
+          hyperparameters?: Json | null
+          id?: string
+          is_active?: boolean | null
+          model_name?: string
+          model_type?: string
+          model_version?: string
+          performance_metrics?: Json | null
+          precision_score?: number | null
+          recall_score?: number | null
+          training_data_size?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       performance_benchmarks: {
         Row: {
@@ -642,6 +848,54 @@ export type Database = {
             columns: ["question2_id"]
             isOneToOne: false
             referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      question_standards: {
+        Row: {
+          alignment_strength: number | null
+          created_at: string | null
+          id: string
+          notes: string | null
+          question_id: string | null
+          standard_id: string | null
+          validated_at: string | null
+          validated_by: string | null
+        }
+        Insert: {
+          alignment_strength?: number | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          question_id?: string | null
+          standard_id?: string | null
+          validated_at?: string | null
+          validated_by?: string | null
+        }
+        Update: {
+          alignment_strength?: number | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          question_id?: string | null
+          standard_id?: string | null
+          validated_at?: string | null
+          validated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "question_standards_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "question_standards_standard_id_fkey"
+            columns: ["standard_id"]
+            isOneToOne: false
+            referencedRelation: "educational_standards"
             referencedColumns: ["id"]
           },
         ]
@@ -961,6 +1215,285 @@ export type Database = {
         }
         Relationships: []
       }
+      system_metrics: {
+        Row: {
+          aggregation_period: string | null
+          created_at: string | null
+          dimensions: Json | null
+          id: string
+          measured_at: string | null
+          metric_category: string
+          metric_name: string
+          metric_unit: string | null
+          metric_value: number
+        }
+        Insert: {
+          aggregation_period?: string | null
+          created_at?: string | null
+          dimensions?: Json | null
+          id?: string
+          measured_at?: string | null
+          metric_category: string
+          metric_name: string
+          metric_unit?: string | null
+          metric_value: number
+        }
+        Update: {
+          aggregation_period?: string | null
+          created_at?: string | null
+          dimensions?: Json | null
+          id?: string
+          measured_at?: string | null
+          metric_category?: string
+          metric_name?: string
+          metric_unit?: string | null
+          metric_value?: number
+        }
+        Relationships: []
+      }
+      test_assemblies: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          params: Json | null
+          status: string | null
+          title: string
+          tos_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          params?: Json | null
+          status?: string | null
+          title: string
+          tos_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          params?: Json | null
+          status?: string | null
+          title?: string
+          tos_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_assemblies_tos_id_fkey"
+            columns: ["tos_id"]
+            isOneToOne: false
+            referencedRelation: "tos_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_assembly_constraints: {
+        Row: {
+          constraint_config: Json
+          constraint_type: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_required: boolean | null
+          priority: number | null
+          test_id: string | null
+        }
+        Insert: {
+          constraint_config: Json
+          constraint_type: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_required?: boolean | null
+          priority?: number | null
+          test_id?: string | null
+        }
+        Update: {
+          constraint_config?: Json
+          constraint_type?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_required?: boolean | null
+          priority?: number | null
+          test_id?: string | null
+        }
+        Relationships: []
+      }
+      test_assignments: {
+        Row: {
+          assigned_at: string | null
+          assigned_by: string | null
+          created_at: string | null
+          id: string
+          metadata: Json | null
+          seat_number: string | null
+          started_at: string | null
+          status: string | null
+          student_id: string
+          student_name: string
+          submitted_at: string | null
+          test_version_id: string
+        }
+        Insert: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          seat_number?: string | null
+          started_at?: string | null
+          status?: string | null
+          student_id: string
+          student_name: string
+          submitted_at?: string | null
+          test_version_id: string
+        }
+        Update: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          seat_number?: string | null
+          started_at?: string | null
+          status?: string | null
+          student_id?: string
+          student_name?: string
+          submitted_at?: string | null
+          test_version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_assignments_test_version_id_fkey"
+            columns: ["test_version_id"]
+            isOneToOne: false
+            referencedRelation: "generated_tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_distribution_logs: {
+        Row: {
+          created_at: string | null
+          distributed_at: string | null
+          distributed_by: string | null
+          distribution_strategy: string
+          id: string
+          parent_test_id: string | null
+          settings: Json | null
+          total_students: number
+          total_versions: number
+        }
+        Insert: {
+          created_at?: string | null
+          distributed_at?: string | null
+          distributed_by?: string | null
+          distribution_strategy: string
+          id?: string
+          parent_test_id?: string | null
+          settings?: Json | null
+          total_students: number
+          total_versions: number
+        }
+        Update: {
+          created_at?: string | null
+          distributed_at?: string | null
+          distributed_by?: string | null
+          distribution_strategy?: string
+          id?: string
+          parent_test_id?: string | null
+          settings?: Json | null
+          total_students?: number
+          total_versions?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_distribution_logs_parent_test_id_fkey"
+            columns: ["parent_test_id"]
+            isOneToOne: false
+            referencedRelation: "generated_tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_equivalence_groups: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          group_name: string
+          id: string
+          statistical_metrics: Json | null
+          target_difficulty: number | null
+          target_reliability: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          group_name: string
+          id?: string
+          statistical_metrics?: Json | null
+          target_difficulty?: number | null
+          target_reliability?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          group_name?: string
+          id?: string
+          statistical_metrics?: Json | null
+          target_difficulty?: number | null
+          target_reliability?: number | null
+        }
+        Relationships: []
+      }
+      test_equivalence_members: {
+        Row: {
+          created_at: string | null
+          equivalence_score: number | null
+          group_id: string | null
+          id: string
+          test_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          equivalence_score?: number | null
+          group_id?: string | null
+          id?: string
+          test_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          equivalence_score?: number | null
+          group_id?: string | null
+          id?: string
+          test_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_equivalence_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "test_equivalence_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "test_equivalence_members_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "generated_tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       test_exports: {
         Row: {
           export_type: string
@@ -1243,6 +1776,42 @@ export type Database = {
         }
         Relationships: []
       }
+      user_analytics: {
+        Row: {
+          created_at: string | null
+          event_data: Json | null
+          event_type: string
+          id: string
+          ip_address: unknown | null
+          occurred_at: string | null
+          session_id: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          event_data?: Json | null
+          event_type: string
+          id?: string
+          ip_address?: unknown | null
+          occurred_at?: string | null
+          session_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          event_data?: Json | null
+          event_type?: string
+          id?: string
+          ip_address?: unknown | null
+          occurred_at?: string | null
+          session_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       validation_tests: {
         Row: {
           created_at: string
@@ -1290,6 +1859,41 @@ export type Database = {
           test_type?: string
         }
         Relationships: []
+      }
+      version_security_logs: {
+        Row: {
+          detected_at: string | null
+          event_data: Json | null
+          event_type: string
+          id: string
+          severity: string | null
+          test_version_id: string | null
+        }
+        Insert: {
+          detected_at?: string | null
+          event_data?: Json | null
+          event_type: string
+          id?: string
+          severity?: string | null
+          test_version_id?: string | null
+        }
+        Update: {
+          detected_at?: string | null
+          event_data?: Json | null
+          event_type?: string
+          id?: string
+          severity?: string | null
+          test_version_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "version_security_logs_test_version_id_fkey"
+            columns: ["test_version_id"]
+            isOneToOne: false
+            referencedRelation: "generated_tests"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -1350,6 +1954,14 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      get_available_test_versions: {
+        Args: { p_parent_test_id: string }
+        Returns: {
+          assignment_count: number
+          version_id: string
+          version_number: number
+        }[]
+      }
       get_current_user_role: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -1381,6 +1993,14 @@ export type Database = {
       is_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      validate_version_balance: {
+        Args: { p_parent_test_id: string }
+        Returns: {
+          is_balanced: boolean
+          max_diff: number
+          warning_message: string
+        }[]
       }
     }
     Enums: {
