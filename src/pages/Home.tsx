@@ -1,7 +1,7 @@
-
 import { useNavigate } from "react-router-dom";
 import { HeroSection } from "@/components/HeroSection";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { CheckCircle2, Shield, Users, BarChart3, BookOpen, Zap } from "lucide-react";
 
 export default function Home() {
@@ -17,7 +17,8 @@ export default function Home() {
         "Ensure balanced coverage across Bloom's taxonomy levels",
         "Validate content alignment with educational standards",
         "Track cognitive complexity distribution"
-      ]
+      ],
+      action: () => navigate('/test-assembly')
     },
     {
       icon: Zap,
@@ -28,7 +29,8 @@ export default function Home() {
         "Generate appropriate distractors for multiple-choice items",
         "Ensure taxonomic accuracy with semantic analysis",
         "Produce diverse question types and formats"
-      ]
+      ],
+      action: () => navigate('/curriculum-standards')
     },
     {
       icon: Shield,
@@ -39,7 +41,8 @@ export default function Home() {
         "Embed unique watermarks for tracking",
         "Randomize question and choice order securely",
         "Maintain psychometric equivalence across versions"
-      ]
+      ],
+      action: () => navigate('/professional-export')
     },
     {
       icon: BarChart3,
@@ -50,7 +53,8 @@ export default function Home() {
         "Analyze item difficulty and discrimination indices",
         "Identify problematic items for revision",
         "Generate detailed assessment reports"
-      ]
+      ],
+      action: () => navigate('/psychometrics')
     },
     {
       icon: Users,
@@ -61,7 +65,8 @@ export default function Home() {
         "Review and approve items collaboratively",
         "Track changes and version history",
         "Assign roles and permissions"
-      ]
+      ],
+      action: () => navigate('/enhanced-dashboard')
     },
     {
       icon: CheckCircle2,
@@ -72,7 +77,8 @@ export default function Home() {
         "Validate alignment with objectives",
         "Check for bias and accessibility issues",
         "Ensure compliance with testing standards"
-      ]
+      ],
+      action: () => navigate('/quality')
     }
   ];
 
@@ -114,7 +120,7 @@ export default function Home() {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-4">
                   <ul className="space-y-2">
                     {feature.benefits.map((benefit, i) => (
                       <li key={i} className="flex items-start gap-2">
@@ -123,6 +129,15 @@ export default function Home() {
                       </li>
                     ))}
                   </ul>
+                  {feature.action && (
+                    <Button 
+                      variant="outline" 
+                      className="w-full" 
+                      onClick={feature.action}
+                    >
+                      Explore Feature
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ))}
