@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Layout } from "@/components/layout/Layout";
-import { QuestionBankForm } from "@/components/questionbank/QuestionBankForm";
-import { QuestionBankList } from "@/components/questionbank/QuestionBankList";
-import BulkImport from "@/components/BulkImport";
+import { Layout } from "@/components/ui/layout/Layout";
+import { QuestionBankForm } from "@/components/ui/questionbank/QuestionBankForm";
+import { QuestionBankList } from "@/components/ui/questionbank/QuestionBankList";
+import BulkImport from "@/components/ui/BulkImport";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Database, Upload } from "lucide-react";
