@@ -1,8 +1,8 @@
-import { Layout } from "@/components/ui/layout/Layout";
-import AnalyticsCharts from "@/components/ui/AnalyticsCharts";
-import EnhancedQuestionBank from "@/components/ui/EnhancedQuestionBank";
-import { CollaborativeDocumentManager } from "@/components/ui/CollaborativeDocumentManager";
-import { TestVersionComparison } from "@/components/ui/TestVersionComparison";
+import { Layout } from "@/components/layout/Layout";
+import AnalyticsCharts from "@/components/AnalyticsCharts";
+import EnhancedQuestionBank from "@/components/EnhancedQuestionBank";
+import { CollaborativeDocumentManager } from "@/components/CollaborativeDocumentManager";
+import { TestVersionComparison } from "@/components/TestVersionComparison";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   BarChart3, 

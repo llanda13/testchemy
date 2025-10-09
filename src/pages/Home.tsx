@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { HeroSection } from "@/components/ui/HeroSection";
+import { HeroSection } from "@/components/HeroSection";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Shield, Users, BarChart3, BookOpen, Zap } from "lucide-react";

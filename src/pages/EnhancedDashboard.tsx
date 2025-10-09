@@ -13,11 +13,11 @@ import {
   Users,
   FileText
 } from 'lucide-react';
-import { QualityDashboard } from '@/components/ui/quality/QualityDashboard';
-import { TaxonomyMatrix } from '@/components/ui/classification/TaxonomyMatrix';
-import PsychometricDashboard from '@/components/ui/analytics/PsychometricDashboard';
-import { EnhancedQuestionForm } from '@/components/ui/enhanced/EnhancedQuestionForm';
-import { Dashboard } from '@/components/ui/Dashboard';
+import { QualityDashboard } from '@/components/quality/QualityDashboard';
+import { TaxonomyMatrix } from '@/components/classification/TaxonomyMatrix';
+import PsychometricDashboard from '@/components/analytics/PsychometricDashboard';
+import { EnhancedQuestionForm } from '@/components/enhanced/EnhancedQuestionForm';
+import { Dashboard } from '@/components/Dashboard';
 
 interface EnhancedDashboardProps {
   userRole: 'admin' | 'teacher';

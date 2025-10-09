@@ -1,1 +1,1 @@
-export { SemanticSimilarity } from '@/components/ui/classification/SemanticSimilarity';
+export { SemanticSimilarity } from '@/components/classification/SemanticSimilarity';

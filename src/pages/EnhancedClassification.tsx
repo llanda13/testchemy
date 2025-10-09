@@ -6,11 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Brain, Sparkles, FileCheck, Layers } from 'lucide-react';
-import IntelligentGenerator from '@/components/ui/generation/IntelligentGenerator';
-import { TaxonomyMatrix } from '@/components/ui/classification/TaxonomyMatrix';
-import { SemanticSimilarity } from '@/components/ui/classification/SemanticSimilarity';
-import { ValidationWorkflow } from '@/components/ui/classification/ValidationWorkflow';
-import { ClassificationConfidence } from '@/components/ui/classification/ClassificationConfidence';
+import IntelligentGenerator from '@/components/generation/IntelligentGenerator';
+import { TaxonomyMatrix } from '@/components/classification/TaxonomyMatrix';
+import { SemanticSimilarity } from '@/components/classification/SemanticSimilarity';
+import { ValidationWorkflow } from '@/components/classification/ValidationWorkflow';
+import { ClassificationConfidence } from '@/components/classification/ClassificationConfidence';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 

@@ -12,7 +12,7 @@ import { Plus, Trash2, Save, Target, FileText, Sparkles, Brain } from 'lucide-re
 import { Questions } from '@/services/db/questions';
 import { EdgeFunctions } from '@/services/edgeFunctions';
 import { classifyQuestion } from '@/services/ai/classify';
-import { TaxonomyMatrixSelector } from '@/components/ui/classification/TaxonomyMatrixSelector';
+import { TaxonomyMatrixSelector } from '@/components/classification/TaxonomyMatrixSelector';
 import { toast } from 'sonner';
 
 interface QuestionFormProps {

@@ -4,9 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Shield, Activity, BarChart3, CheckCircle2, AlertTriangle } from 'lucide-react';
-import PsychometricDashboard from '@/components/ui/analytics/PsychometricDashboard';
-import ValidationDashboard from '@/components/ui/testing/ValidationDashboard';
-import { QualityDashboard } from '@/components/ui/quality/QualityDashboard';
+import PsychometricDashboard from '@/components/analytics/PsychometricDashboard';
+import ValidationDashboard from '@/components/testing/ValidationDashboard';
+import { QualityDashboard } from '@/components/quality/QualityDashboard';
 
 export default function Quality() {
   const [selectedTab, setSelectedTab] = useState('overview');
