@@ -9,7 +9,7 @@ import { ArrowLeft, Shuffle, Download, Eye, FileText } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { generateMultipleVersions, validateVersionBalance } from '@/services/testGeneration/multiVersionGenerator';
-import TestDistribution from '@/components/testGeneration/TestDistribution';
+import TestDistribution from '@/components/ui/testGeneration/TestDistribution';
 import type { Json } from '@/integrations/supabase/types';
 
 interface Question {

@@ -13,8 +13,8 @@ import { Questions } from '@/services/db/questions';
 import { classifyQuestions } from '@/services/edgeFunctions';
 import { classifyBloom, detectKnowledgeDimension, inferDifficulty } from '@/services/ai/classify';
 import { useTaxonomyClassification } from '@/hooks/useTaxonomyClassification';
-import { ClassificationConfidence } from '@/components/classification/ClassificationConfidence';
-import { SemanticSimilarity } from '@/components/classification/SemanticSimilarity';
+import { ClassificationConfidence } from '@/components/ui/classification/ClassificationConfidence';
+import { SemanticSimilarity } from '@/components/ui/classification/SemanticSimilarity';
 
 interface BulkImportProps {
   onClose: () => void;
