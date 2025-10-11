@@ -247,6 +247,10 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+  let operationSuccess = true;
+  let errorType = '';
+
   try {
     const payload: ClassificationInput[] = await req.json();
     
@@ -275,13 +279,93 @@ serve(async (req) => {
       };
     });
 
+    // Track metrics
+    const duration = Date.now() - startTime;
+    const avgConfidence = results.reduce((sum, r) => sum + r.confidence, 0) / results.length;
+    
+    // Initialize Supabase for metrics
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    );
+
+    // Record performance metrics
+    await supabase.from('performance_benchmarks').insert({
+      operation_name: 'classify_questions',
+      min_response_time: duration,
+      average_response_time: duration,
+      max_response_time: duration,
+      error_rate: 0,
+      throughput: results.length,
+      measurement_period_minutes: 1
+    }).catch(err => console.error('Failed to record performance:', err));
+
+    // Record quality metrics
+    await supabase.from('quality_metrics').insert({
+      entity_type: 'ai_classification',
+      characteristic: 'Functional Correctness',
+      metric_name: 'classification_confidence',
+      value: avgConfidence,
+      unit: 'score',
+      automated: true
+    }).catch(err => console.error('Failed to record quality:', err));
+
+    // Record system metrics
+    await supabase.from('system_metrics').insert({
+      metric_category: 'classification',
+      metric_name: 'batch_classification',
+      metric_value: results.length,
+      metric_unit: 'questions',
+      dimensions: {
+        avg_confidence: avgConfidence,
+        duration_ms: duration,
+        needs_review: results.filter(r => r.needs_review).length
+      }
+    }).catch(err => console.error('Failed to record system metrics:', err));
+
     return new Response(JSON.stringify(results), {
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
 
   } catch (error) {
+    operationSuccess = false;
+    errorType = error instanceof Error ? error.name : 'UnknownError';
     console.error('Classification error:', error);
+    
+    const duration = Date.now() - startTime;
     const message = error instanceof Error ? error.message : 'Unknown error';
+
+    // Record error metrics
+    try {
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      );
+
+      await supabase.from('performance_benchmarks').insert({
+        operation_name: 'classify_questions',
+        min_response_time: duration,
+        average_response_time: duration,
+        max_response_time: duration,
+        error_rate: 1,
+        throughput: 0,
+        measurement_period_minutes: 1
+      });
+
+      await supabase.from('system_metrics').insert({
+        metric_category: 'reliability',
+        metric_name: 'error_occurrence',
+        metric_value: 1,
+        dimensions: {
+          error_type: errorType,
+          error_message: message,
+          operation: 'classify_questions'
+        }
+      });
+    } catch (metricsError) {
+      console.error('Failed to record error metrics:', metricsError);
+    }
+
     return new Response(
       JSON.stringify({ error: `Classification failed: ${message}` }), 
       { 
