@@ -5,6 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useQualityMetrics } from "@/hooks/useQualityMetrics";
 import Index from "./pages/Index";
+import Auth from "./pages/Auth";
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
 import { EnhancedDashboard } from "./pages/EnhancedDashboard";
 import { QualityDashboard } from "./components/quality/QualityDashboard";
 import PsychometricDashboard from "./components/analytics/PsychometricDashboard";
@@ -30,6 +33,9 @@ const App = () => {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/enhanced-dashboard" element={<EnhancedDashboard userRole="teacher" userName="Demo User" />} />
             <Route path="/quality" element={<QualityDashboard />} />
             <Route path="/psychometrics" element={<PsychometricDashboard />} />
