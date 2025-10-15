@@ -8,6 +8,9 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import TeacherDashboard from "./pages/teacher/TeacherDashboard";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 import { EnhancedDashboard } from "./pages/EnhancedDashboard";
 import { QualityDashboard } from "./components/quality/QualityDashboard";
 import PsychometricDashboard from "./components/analytics/PsychometricDashboard";
@@ -36,6 +39,26 @@ const App = () => {
             <Route path="/auth" element={<Auth />} />
             <Route path="/login" element={<Login />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            
+            {/* Admin Routes */}
+            <Route 
+              path="/admin/dashboard" 
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <AdminDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Teacher Routes */}
+            <Route 
+              path="/teacher/dashboard" 
+              element={
+                <ProtectedRoute requiredRole="teacher">
+                  <TeacherDashboard />
+                </ProtectedRoute>
+              } 
+            />
             <Route path="/enhanced-dashboard" element={<EnhancedDashboard userRole="teacher" userName="Demo User" />} />
             <Route path="/quality" element={<QualityDashboard />} />
             <Route path="/psychometrics" element={<PsychometricDashboard />} />
