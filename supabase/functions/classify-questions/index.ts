@@ -289,8 +289,8 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // Record performance metrics
-    await supabase.from('performance_benchmarks').insert({
+    // Record performance metrics (fire and forget)
+    supabase.from('performance_benchmarks').insert({
       operation_name: 'classify_questions',
       min_response_time: duration,
       average_response_time: duration,
@@ -298,20 +298,20 @@ serve(async (req) => {
       error_rate: 0,
       throughput: results.length,
       measurement_period_minutes: 1
-    }).catch(err => console.error('Failed to record performance:', err));
+    });
 
-    // Record quality metrics
-    await supabase.from('quality_metrics').insert({
+    // Record quality metrics (fire and forget)
+    supabase.from('quality_metrics').insert({
       entity_type: 'ai_classification',
       characteristic: 'Functional Correctness',
       metric_name: 'classification_confidence',
       value: avgConfidence,
       unit: 'score',
       automated: true
-    }).catch(err => console.error('Failed to record quality:', err));
+    });
 
-    // Record system metrics
-    await supabase.from('system_metrics').insert({
+    // Record system metrics (fire and forget)
+    supabase.from('system_metrics').insert({
       metric_category: 'classification',
       metric_name: 'batch_classification',
       metric_value: results.length,
@@ -321,7 +321,7 @@ serve(async (req) => {
         duration_ms: duration,
         needs_review: results.filter(r => r.needs_review).length
       }
-    }).catch(err => console.error('Failed to record system metrics:', err));
+    });
 
     return new Response(JSON.stringify(results), {
       headers: { ...corsHeaders, "Content-Type": "application/json" }

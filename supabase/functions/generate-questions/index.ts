@@ -220,7 +220,8 @@ Return a JSON object with an "items" array containing questions in this exact fo
     const duration = Date.now() - startTime;
     const avgQuality = validQuestions.reduce((sum: number, q: any) => sum + (q.quality_score || 0.8), 0) / validQuestions.length;
 
-    await supabase.from('performance_benchmarks').insert({
+    // Record metrics (fire and forget)
+    supabase.from('performance_benchmarks').insert({
       operation_name: 'generate_questions',
       min_response_time: duration,
       average_response_time: duration,
@@ -228,18 +229,18 @@ Return a JSON object with an "items" array containing questions in this exact fo
       error_rate: 0,
       throughput: validQuestions.length,
       measurement_period_minutes: 1
-    }).catch(err => console.error('Failed to record performance:', err));
+    });
 
-    await supabase.from('quality_metrics').insert({
+    supabase.from('quality_metrics').insert({
       entity_type: 'question_generation',
       characteristic: 'Functional Completeness',
       metric_name: 'generation_success_rate',
       value: (insertedQuestions?.length || 0) / count,
       unit: 'ratio',
       automated: true
-    }).catch(err => console.error('Failed to record quality:', err));
+    });
 
-    await supabase.from('system_metrics').insert({
+    supabase.from('system_metrics').insert({
       metric_category: 'performance',
       metric_name: 'question_generation_time',
       metric_value: duration,
@@ -250,7 +251,7 @@ Return a JSON object with an "items" array containing questions in this exact fo
         bloom_level,
         difficulty
       }
-    }).catch(err => console.error('Failed to record system metrics:', err));
+    });
 
     return new Response(
       JSON.stringify({
