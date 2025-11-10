@@ -137,17 +137,24 @@ async function selectNonRedundantQuestions(
     
     for (const selectedQ of selected) {
       if (question.semantic_vector && selectedQ.semantic_vector) {
-        // Query similarity from database
-        const { data: similarityData } = await supabase
-          .from('question_similarities')
-          .select('similarity_score')
-          .or(`question1_id.eq.${question.id},question2_id.eq.${question.id}`)
-          .or(`question1_id.eq.${selectedQ.id},question2_id.eq.${selectedQ.id}`)
-          .single();
+        // Use check_question_similarity function
+        const { data: similarQuestions } = await supabase
+          .rpc('check_question_similarity', {
+            p_question_text: question.question_text,
+            p_topic: question.topic,
+            p_bloom_level: question.bloom_level,
+            p_threshold: similarityThreshold
+          });
 
-        if (similarityData && similarityData.similarity_score >= similarityThreshold) {
-          isSimilar = true;
-          break;
+        if (similarQuestions && similarQuestions.length > 0) {
+          // Check if any similar question is already selected
+          const similarToSelected = similarQuestions.some((sq: any) => 
+            selected.some(s => s.id === sq.similar_question_id)
+          );
+          if (similarToSelected) {
+            isSimilar = true;
+            break;
+          }
         }
       }
     }
@@ -155,8 +162,11 @@ async function selectNonRedundantQuestions(
     if (!isSimilar) {
       selected.push(question);
       
-      // Increment usage count
-      await supabase.rpc('increment_usage_count', { question_id: question.id });
+      // Mark question as used
+      await supabase.rpc('mark_question_used', { 
+        p_question_id: question.id,
+        p_test_id: null
+      });
     }
   }
 
