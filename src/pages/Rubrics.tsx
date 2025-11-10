@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layout } from '@/components/layout/Layout';
+import { TeacherLayout } from '@/components/layout/TeacherLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, BookOpen, Target, Users } from 'lucide-react';
@@ -142,5 +142,5 @@ export default function Rubrics() {
     }
   };
 
-  return <Layout>{renderContent()}</Layout>;
+  return <TeacherLayout>{renderContent()}</TeacherLayout>;
 }
