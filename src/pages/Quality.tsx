@@ -8,9 +8,13 @@ import { Shield, Activity, BarChart3, CheckCircle2, AlertTriangle } from 'lucide
 import PsychometricDashboard from '@/components/analytics/PsychometricDashboard';
 import ValidationDashboard from '@/components/testing/ValidationDashboard';
 import { QualityDashboard } from '@/components/quality/QualityDashboard';
+import { useQualityMetrics } from '@/hooks/useQualityMetrics';
 
 export default function Quality() {
   const [selectedTab, setSelectedTab] = useState('overview');
+  
+  // Initialize automated quality metrics collection
+  useQualityMetrics();
 
   return (
     <AdminLayout>
