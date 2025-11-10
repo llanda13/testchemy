@@ -2057,6 +2057,19 @@ export type Database = {
           total_pairs: number
         }[]
       }
+      check_question_similarity: {
+        Args: {
+          p_bloom_level: string
+          p_question_text: string
+          p_threshold?: number
+          p_topic: string
+        }
+        Returns: {
+          question_text: string
+          similar_question_id: string
+          similarity_score: number
+        }[]
+      }
       cleanup_old_presence: {
         Args: Record<PropertyKey, never>
         Returns: undefined
@@ -2115,6 +2128,10 @@ export type Database = {
           p_question_id: string
           p_response_time_ms: number
         }
+        Returns: undefined
+      }
+      mark_question_used: {
+        Args: { p_question_id: string; p_test_id: string }
         Returns: undefined
       }
       validate_version_balance: {

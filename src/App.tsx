@@ -2,24 +2,31 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useQualityMetrics } from "@/hooks/useQualityMetrics";
+import { AuthProvider } from "./components/AuthProvider";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
-import { ProtectedRoute } from "./components/ProtectedRoute";
-import { EnhancedDashboard } from "./pages/EnhancedDashboard";
-import { QualityDashboard } from "./components/quality/QualityDashboard";
-import PsychometricDashboard from "./components/analytics/PsychometricDashboard";
-import TestAssembly from "./pages/TestAssembly";
-import CurriculumStandards from "./pages/CurriculumStandards";
+import QuestionBankManager from "./pages/admin/QuestionBankManager";
+import PendingApprovals from "./pages/admin/PendingApprovals";
+import BulkImportPage from "./pages/admin/BulkImportPage";
+import UserManagement from "./pages/admin/UserManagement";
+import AdminAnalytics from "./pages/admin/Analytics";
+import AdminSettings from "./pages/admin/Settings";
+import AILogs from "./pages/admin/AILogs";
+import TOSPage from "./pages/teacher/TOSPage";
+import IntelligentTestGenerator from "./pages/teacher/IntelligentTestGenerator";
+import MyTests from "./pages/teacher/MyTests";
+import TeacherHistory from "./pages/teacher/History";
+import TeacherReports from "./pages/teacher/Reports";
+import TeacherSettings from "./pages/teacher/Settings";
 import ProfessionalExport from "./pages/ProfessionalExport";
-import Phase4Hub from "./pages/Phase4Hub";
-import EnhancedClassification from "./pages/EnhancedClassification";
-import Library from "./pages/Library";
+import Rubrics from "./pages/Rubrics";
+import Quality from "./pages/Quality";
+import TestAssembly from "./pages/TestAssembly";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,49 +37,64 @@ const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            
-            {/* Admin Routes */}
-            <Route 
-              path="/admin/dashboard" 
-              element={
-                <ProtectedRoute requiredRole="admin">
-                  <AdminDashboard />
-                </ProtectedRoute>
-              } 
-            />
-            
-            {/* Teacher Routes */}
-            <Route 
-              path="/teacher/dashboard" 
-              element={
-                <ProtectedRoute requiredRole="teacher">
-                  <TeacherDashboard />
-                </ProtectedRoute>
-              } 
-            />
-            <Route path="/enhanced-dashboard" element={<EnhancedDashboard userRole="teacher" userName="Demo User" />} />
-            <Route path="/quality" element={<QualityDashboard />} />
-            <Route path="/psychometrics" element={<PsychometricDashboard />} />
-            <Route path="/test-assembly" element={<TestAssembly />} />
-            <Route path="/curriculum-standards" element={<CurriculumStandards />} />
-            <Route path="/professional-export" element={<ProfessionalExport />} />
-            <Route path="/phase4" element={<Phase4Hub />} />
-            <Route path="/validation" element={<EnhancedClassification />} />
-            <Route path="/library" element={<Library />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/auth" element={<Auth />} />
+              
+              {/* Admin Routes - Professional Dark Theme */}
+              <Route 
+                path="/admin/*" 
+                element={
+                  <ProtectedRoute requiredRole="admin">
+                    <Routes>
+                      <Route index element={<Navigate to="/admin/dashboard" replace />} />
+                      <Route path="dashboard" element={<AdminDashboard />} />
+                      <Route path="question-bank" element={<QuestionBankManager />} />
+                      <Route path="approvals" element={<PendingApprovals />} />
+                      <Route path="bulk-import" element={<BulkImportPage />} />
+                      <Route path="users" element={<UserManagement />} />
+                      <Route path="analytics" element={<AdminAnalytics />} />
+                      <Route path="ai-logs" element={<AILogs />} />
+                      <Route path="quality" element={<Quality />} />
+                      <Route path="test-assembly" element={<TestAssembly />} />
+                      <Route path="settings" element={<AdminSettings />} />
+                    </Routes>
+                  </ProtectedRoute>
+                } 
+              />
+              
+              {/* Teacher Routes - Clean Light Theme */}
+              <Route 
+                path="/teacher/*" 
+                element={
+                  <ProtectedRoute requiredRole="teacher">
+                    <Routes>
+                      <Route index element={<Navigate to="/teacher/dashboard" replace />} />
+                      <Route path="dashboard" element={<TeacherDashboard />} />
+                      <Route path="tos" element={<TOSPage />} />
+                      <Route path="generate-test" element={<IntelligentTestGenerator />} />
+                      <Route path="my-tests" element={<MyTests />} />
+                      <Route path="history" element={<TeacherHistory />} />
+                      <Route path="reports" element={<TeacherReports />} />
+                      <Route path="export" element={<ProfessionalExport />} />
+                      <Route path="rubrics" element={<Rubrics />} />
+                      <Route path="settings" element={<TeacherSettings />} />
+                    </Routes>
+                  </ProtectedRoute>
+                } 
+              />
+              
+              {/* Catch-all redirect */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 };
