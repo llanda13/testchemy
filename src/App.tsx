@@ -24,6 +24,8 @@ import TeacherReports from "./pages/teacher/Reports";
 import TeacherSettings from "./pages/teacher/Settings";
 import ProfessionalExport from "./pages/ProfessionalExport";
 import Rubrics from "./pages/Rubrics";
+import Tests from "./pages/Tests";
+import Collaboration from "./pages/Collaboration";
 import Quality from "./pages/Quality";
 import TestAssembly from "./pages/TestAssembly";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -62,6 +64,8 @@ const App = () => {
                       <Route path="ai-logs" element={<AILogs />} />
                       <Route path="quality" element={<Quality />} />
                       <Route path="test-assembly" element={<TestAssembly />} />
+                      <Route path="tests" element={<Tests />} />
+                      <Route path="collaboration" element={<Collaboration />} />
                       <Route path="settings" element={<AdminSettings />} />
                     </Routes>
                   </ProtectedRoute>
@@ -83,6 +87,8 @@ const App = () => {
                       <Route path="reports" element={<TeacherReports />} />
                       <Route path="export" element={<ProfessionalExport />} />
                       <Route path="rubrics" element={<Rubrics />} />
+                      <Route path="tests" element={<Tests />} />
+                      <Route path="collaboration" element={<Collaboration />} />
                       <Route path="settings" element={<TeacherSettings />} />
                     </Routes>
                   </ProtectedRoute>
