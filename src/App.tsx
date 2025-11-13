@@ -29,6 +29,8 @@ import Collaboration from "./pages/Collaboration";
 import Quality from "./pages/Quality";
 import TestAssembly from "./pages/TestAssembly";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { AdminLayout } from "./components/layout/AdminLayout";
+import { TeacherLayout } from "./components/layout/TeacherLayout";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -53,21 +55,23 @@ const App = () => {
                 path="/admin/*" 
                 element={
                   <ProtectedRoute requiredRole="admin">
-                    <Routes>
-                      <Route index element={<Navigate to="/admin/dashboard" replace />} />
-                      <Route path="dashboard" element={<AdminDashboard />} />
-                      <Route path="question-bank" element={<QuestionBankManager />} />
-                      <Route path="approvals" element={<PendingApprovals />} />
-                      <Route path="bulk-import" element={<BulkImportPage />} />
-                      <Route path="users" element={<UserManagement />} />
-                      <Route path="analytics" element={<AdminAnalytics />} />
-                      <Route path="ai-logs" element={<AILogs />} />
-                      <Route path="quality" element={<Quality />} />
-                      <Route path="test-assembly" element={<TestAssembly />} />
-                      <Route path="tests" element={<Tests />} />
-                      <Route path="collaboration" element={<Collaboration />} />
-                      <Route path="settings" element={<AdminSettings />} />
-                    </Routes>
+                    <AdminLayout>
+                      <Routes>
+                        <Route index element={<Navigate to="/admin/dashboard" replace />} />
+                        <Route path="dashboard" element={<AdminDashboard />} />
+                        <Route path="question-bank" element={<QuestionBankManager />} />
+                        <Route path="approvals" element={<PendingApprovals />} />
+                        <Route path="bulk-import" element={<BulkImportPage />} />
+                        <Route path="users" element={<UserManagement />} />
+                        <Route path="analytics" element={<AdminAnalytics />} />
+                        <Route path="ai-logs" element={<AILogs />} />
+                        <Route path="quality" element={<Quality />} />
+                        <Route path="test-assembly" element={<TestAssembly />} />
+                        <Route path="tests" element={<Tests />} />
+                        <Route path="collaboration" element={<Collaboration />} />
+                        <Route path="settings" element={<AdminSettings />} />
+                      </Routes>
+                    </AdminLayout>
                   </ProtectedRoute>
                 } 
               />
@@ -77,20 +81,22 @@ const App = () => {
                 path="/teacher/*" 
                 element={
                   <ProtectedRoute requiredRole="teacher">
-                    <Routes>
-                      <Route index element={<Navigate to="/teacher/dashboard" replace />} />
-                      <Route path="dashboard" element={<TeacherDashboard />} />
-                      <Route path="tos" element={<TOSPage />} />
-                      <Route path="generate-test" element={<IntelligentTestGenerator />} />
-                      <Route path="my-tests" element={<MyTests />} />
-                      <Route path="history" element={<TeacherHistory />} />
-                      <Route path="reports" element={<TeacherReports />} />
-                      <Route path="export" element={<ProfessionalExport />} />
-                      <Route path="rubrics" element={<Rubrics />} />
-                      <Route path="tests" element={<Tests />} />
-                      <Route path="collaboration" element={<Collaboration />} />
-                      <Route path="settings" element={<TeacherSettings />} />
-                    </Routes>
+                    <TeacherLayout>
+                      <Routes>
+                        <Route index element={<Navigate to="/teacher/dashboard" replace />} />
+                        <Route path="dashboard" element={<TeacherDashboard />} />
+                        <Route path="tos" element={<TOSPage />} />
+                        <Route path="generate-test" element={<IntelligentTestGenerator />} />
+                        <Route path="my-tests" element={<MyTests />} />
+                        <Route path="history" element={<TeacherHistory />} />
+                        <Route path="reports" element={<TeacherReports />} />
+                        <Route path="export" element={<ProfessionalExport />} />
+                        <Route path="rubrics" element={<Rubrics />} />
+                        <Route path="tests" element={<Tests />} />
+                        <Route path="collaboration" element={<Collaboration />} />
+                        <Route path="settings" element={<TeacherSettings />} />
+                      </Routes>
+                    </TeacherLayout>
                   </ProtectedRoute>
                 } 
               />

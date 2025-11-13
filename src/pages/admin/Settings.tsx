@@ -1,4 +1,3 @@
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -12,8 +11,7 @@ export default function Settings() {
   const { user } = useAuth();
 
   return (
-    <AdminLayout>
-      <div className="container mx-auto py-8 px-4 max-w-3xl space-y-6">
+    <div className="container mx-auto py-8 px-4 max-w-3xl space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold mb-2">System Settings</h1>
@@ -151,6 +149,5 @@ export default function Settings() {
           </CardContent>
         </Card>
       </div>
-    </AdminLayout>
   );
 }

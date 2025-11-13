@@ -1,4 +1,3 @@
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Brain, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
@@ -67,8 +66,7 @@ export default function AILogs() {
   };
 
   return (
-    <AdminLayout>
-      <div className="container mx-auto py-8 px-4 space-y-6">
+    <div className="container mx-auto py-8 px-4 space-y-6">
         <div>
           <h1 className="text-3xl font-bold mb-2">AI Activity Logs</h1>
           <p className="text-muted-foreground">
@@ -157,6 +155,5 @@ export default function AILogs() {
           </CardContent>
         </Card>
       </div>
-    </AdminLayout>
   );
 }

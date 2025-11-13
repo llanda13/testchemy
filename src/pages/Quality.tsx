@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,8 +16,7 @@ export default function Quality() {
   useQualityMetrics();
 
   return (
-    <AdminLayout>
-      <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Quality Assurance</h1>
@@ -188,7 +186,6 @@ export default function Quality() {
         </TabsContent>
       </Tabs>
       </div>
-    </AdminLayout>
   );
 }
 
