@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -77,8 +76,7 @@ export default function TestAssembly() {
   };
 
   return (
-    <AdminLayout>
-      <div className="container mx-auto py-8 space-y-6">
+    <div className="container mx-auto py-8 space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold mb-2">Advanced Test Assembly</h1>
@@ -263,6 +261,5 @@ export default function TestAssembly() {
         </Tabs>
       )}
       </div>
-    </AdminLayout>
   );
 }

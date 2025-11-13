@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUserRole } from "@/hooks/useUserRole";
-import { TeacherLayout } from "@/components/layout/TeacherLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { 
@@ -47,8 +46,7 @@ export default function TeacherDashboard() {
   }
 
   return (
-    <TeacherLayout>
-      <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Teacher Dashboard</h1>
@@ -148,6 +146,5 @@ export default function TeacherDashboard() {
           </CardContent>
         </Card>
       </div>
-    </TeacherLayout>
   );
 }

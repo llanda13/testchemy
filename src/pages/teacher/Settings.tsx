@@ -1,4 +1,3 @@
-import { TeacherLayout } from '@/components/layout/TeacherLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -11,8 +10,7 @@ export default function Settings() {
   const { user } = useAuth();
 
   return (
-    <TeacherLayout>
-      <div className="container mx-auto py-8 px-4 max-w-3xl space-y-6">
+    <div className="container mx-auto py-8 px-4 max-w-3xl space-y-6">
         <div>
           <h1 className="text-3xl font-bold mb-2">Settings</h1>
           <p className="text-muted-foreground">
@@ -92,6 +90,5 @@ export default function Settings() {
           </CardContent>
         </Card>
       </div>
-    </TeacherLayout>
   );
 }

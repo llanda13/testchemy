@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUserRole } from "@/hooks/useUserRole";
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PendingQuestionsPanel } from "@/components/admin/PendingQuestionsPanel";
@@ -51,8 +50,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <AdminLayout>
-      <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Admin Dashboard</h1>
@@ -167,6 +165,5 @@ export default function AdminDashboard() {
           </Card>
         </div>
       </div>
-    </AdminLayout>
   );
 }

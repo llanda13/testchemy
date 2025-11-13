@@ -1,11 +1,9 @@
-import { TeacherLayout } from '@/components/layout/TeacherLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart3, TrendingUp, Users, FileText } from 'lucide-react';
 
 export default function Reports() {
   return (
-    <TeacherLayout>
-      <div className="container mx-auto py-8 px-4 space-y-6">
+    <div className="container mx-auto py-8 px-4 space-y-6">
         <div>
           <h1 className="text-3xl font-bold mb-2">Usage Reports</h1>
           <p className="text-muted-foreground">
@@ -91,6 +89,5 @@ export default function Reports() {
           </CardContent>
         </Card>
       </div>
-    </TeacherLayout>
   );
 }
