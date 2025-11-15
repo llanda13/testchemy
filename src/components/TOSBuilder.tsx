@@ -211,21 +211,9 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
   const analyzeSufficiency = async (matrix: any) => {
     setIsAnalyzing(true);
     try {
-      const analysis = await Analytics.getQuestionBankSufficiency(matrix.id);
-      setSufficiencyAnalysis(analysis);
-      
-      // Calculate if sufficient
-      const totalShortage = Object.values(analysis).reduce((total: number, topicData: any) => {
-        return total + Object.values(topicData as Record<string, any>).reduce((topicTotal: number, bloomData: any) => {
-          return topicTotal + (Number(bloomData.shortage) || 0);
-        }, 0);
-      }, 0);
-      
-      if (totalShortage > 0) {
-        toast.warning(`Question bank has ${totalShortage} missing questions across topics.`);
-      } else {
-        toast.success("Question bank is sufficient for this TOS!");
-      }
+      // Sufficiency analysis temporarily disabled - analytics method not yet implemented
+      setSufficiencyAnalysis({});
+      toast.info("Sufficiency analysis feature coming soon!");
     } catch (error) {
       console.error('Error analyzing TOS sufficiency:', error);
       toast.error("Failed to analyze question bank sufficiency");
