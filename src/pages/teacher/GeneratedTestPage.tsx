@@ -11,9 +11,13 @@ import { usePDFExport } from "@/hooks/usePDFExport";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface TestItem {
-  question: string;
-  type: string;
+  question_text?: string;
+  question?: string;
+  question_type?: string;
+  type?: string;
+  choices?: string[];
   options?: string[];
+  correct_answer?: string | number;
   correctAnswer?: string | number;
   points?: number;
   difficulty?: string;
@@ -106,7 +110,7 @@ export default function GeneratedTestPage() {
   }
 
   const items: TestItem[] = Array.isArray(test.items) ? test.items : [];
-  const totalPoints = items.reduce((sum, item) => sum + (item.points || 0), 0);
+  const totalPoints = items.reduce((sum, item) => sum + (item.points || 1), 0);
 
   return (
     <div className="container mx-auto py-8 space-y-6 print:py-4">
@@ -218,6 +222,11 @@ function QuestionItem({ item, number, showAnswer }: { item: TestItem; number: nu
     }
   };
 
+  const questionText = item.question_text || item.question || '';
+  const questionType = item.question_type || item.type || '';
+  const options = item.choices || item.options || [];
+  const correctAnswer = item.correct_answer ?? item.correctAnswer;
+
   return (
     <div className="border rounded-lg p-4 space-y-3 print:break-inside-avoid">
       {/* Question Header */}
@@ -225,7 +234,7 @@ function QuestionItem({ item, number, showAnswer }: { item: TestItem; number: nu
         <div className="flex items-start gap-2 flex-1">
           <span className="font-bold text-lg">{number}.</span>
           <div className="flex-1">
-            <p className="text-sm leading-relaxed">{item.question}</p>
+            <p className="text-sm leading-relaxed">{questionText}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 print:hidden">
@@ -244,10 +253,10 @@ function QuestionItem({ item, number, showAnswer }: { item: TestItem; number: nu
 
       {/* Question Content based on type */}
       <div className="ml-6">
-        {item.type === "multiple-choice" && item.options && (
+        {(questionType === "mcq" || questionType === "multiple-choice") && options.length > 0 && (
           <div className="space-y-2">
-            {item.options.map((option, idx) => {
-              const isCorrect = item.correctAnswer === idx;
+            {options.map((option, idx) => {
+              const isCorrect = correctAnswer === idx || correctAnswer === String.fromCharCode(65 + idx);
               return (
                 <div
                   key={idx}
@@ -267,13 +276,15 @@ function QuestionItem({ item, number, showAnswer }: { item: TestItem; number: nu
           </div>
         )}
 
-        {item.type === "true-false" && (
+        {(questionType === "true_false" || questionType === "true-false") && (
           <div className="space-y-2">
             {["True", "False"].map((option, idx) => {
               const isCorrect =
-                (item.correctAnswer === "true" && option === "True") ||
-                (item.correctAnswer === "false" && option === "False") ||
-                item.correctAnswer === idx;
+                (correctAnswer === "true" && option === "True") ||
+                (correctAnswer === "false" && option === "False") ||
+                (correctAnswer === "True" && option === "True") ||
+                (correctAnswer === "False" && option === "False") ||
+                correctAnswer === idx;
               return (
                 <div
                   key={idx}
@@ -291,32 +302,32 @@ function QuestionItem({ item, number, showAnswer }: { item: TestItem; number: nu
           </div>
         )}
 
-        {item.type === "fill-blank" && (
+        {(questionType === "short_answer" || questionType === "fill-blank") && (
           <div className="border-b-2 border-dashed border-muted-foreground/30 py-2">
             {showAnswer && (
               <span className="text-primary font-medium">
-                Answer: {item.correctAnswer}
+                Answer: {correctAnswer}
               </span>
             )}
           </div>
         )}
 
-        {item.type === "essay" && (
+        {questionType === "essay" && (
           <div className="space-y-2">
             <div className="border rounded p-4 min-h-[100px] bg-muted/10">
               <p className="text-xs text-muted-foreground italic">
                 Write your answer here...
               </p>
             </div>
-            {showAnswer && item.correctAnswer && (
+            {showAnswer && correctAnswer && (
               <div className="text-sm text-muted-foreground">
-                <strong>Key Points:</strong> {item.correctAnswer}
+                <strong>Key Points:</strong> {correctAnswer}
               </div>
             )}
           </div>
         )}
 
-        {item.type === "matching" && (
+        {questionType === "matching" && (
           <div className="text-sm text-muted-foreground italic">
             Match the items from Column A to Column B
           </div>
@@ -335,12 +346,15 @@ function QuestionItem({ item, number, showAnswer }: { item: TestItem; number: nu
 }
 
 function formatAnswer(item: TestItem): string {
-  if (item.type === "multiple-choice" && typeof item.correctAnswer === "number") {
-    return String.fromCharCode(65 + item.correctAnswer);
+  const questionType = item.question_type || item.type || '';
+  const correctAnswer = item.correct_answer ?? item.correctAnswer;
+  
+  if ((questionType === "mcq" || questionType === "multiple-choice") && typeof correctAnswer === "number") {
+    return String.fromCharCode(65 + correctAnswer);
   }
-  if (item.type === "true-false") {
-    if (item.correctAnswer === "true" || item.correctAnswer === 0) return "True";
-    if (item.correctAnswer === "false" || item.correctAnswer === 1) return "False";
+  if (questionType === "true_false" || questionType === "true-false") {
+    if (correctAnswer === "true" || correctAnswer === "True" || correctAnswer === 0) return "True";
+    if (correctAnswer === "false" || correctAnswer === "False" || correctAnswer === 1) return "False";
   }
-  return String(item.correctAnswer || "N/A");
+  return String(correctAnswer || "N/A");
 }

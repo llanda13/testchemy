@@ -19,6 +19,8 @@ import { useRealtime } from "@/hooks/useRealtime";
 import { usePresence } from "@/hooks/usePresence";
 import { buildTestConfigFromTOS } from "@/utils/testVersions";
 import { SufficiencyAnalysisPanel } from "@/components/analysis/SufficiencyAnalysisPanel";
+import { generateTestFromTOS, TOSCriteria } from "@/services/ai/testGenerationService";
+import { useNavigate } from "react-router-dom";
 
 const topicSchema = z.object({
   topic: z.string().min(1, "Topic name is required"),
@@ -54,6 +56,7 @@ interface TOSBuilderProps {
 }
 
 export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
+  const navigate = useNavigate();
   const [topics, setTopics] = useState([{ topic: "", hours: 0 }]);
   const [tosMatrix, setTosMatrix] = useState<any>(null);
   const [showMatrix, setShowMatrix] = useState(false);
@@ -263,51 +266,54 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
     
     try {
       setGenerationProgress(20);
-      setGenerationStatus("Building test configuration from TOS...");
+      setGenerationStatus("Analyzing TOS matrix and building criteria...");
       
-      const testConfig = buildTestConfigFromTOS(tosMatrix);
+      // Build criteria from TOS competencies
+      const criteria: TOSCriteria[] = tosMatrix.competencies.flatMap((comp: any) =>
+        [
+          { topic: comp.topic_name, bloom_level: 'Remembering', knowledge_dimension: 'Factual', difficulty: 'Easy', count: comp.remembering_items || 0 },
+          { topic: comp.topic_name, bloom_level: 'Understanding', knowledge_dimension: 'Conceptual', difficulty: 'Easy', count: comp.understanding_items || 0 },
+          { topic: comp.topic_name, bloom_level: 'Applying', knowledge_dimension: 'Procedural', difficulty: 'Average', count: comp.applying_items || 0 },
+          { topic: comp.topic_name, bloom_level: 'Analyzing', knowledge_dimension: 'Conceptual', difficulty: 'Average', count: comp.analyzing_items || 0 },
+          { topic: comp.topic_name, bloom_level: 'Evaluating', knowledge_dimension: 'Metacognitive', difficulty: 'Difficult', count: comp.evaluating_items || 0 },
+          { topic: comp.topic_name, bloom_level: 'Creating', knowledge_dimension: 'Metacognitive', difficulty: 'Difficult', count: comp.creating_items || 0 },
+        ].filter(c => c.count > 0)
+      );
       
       setGenerationProgress(40);
-      setGenerationStatus("Generating questions from TOS matrix...");
+      setGenerationStatus("Querying question bank and generating AI questions...");
       
-      const result = await EdgeFunctions.generateQuestionsFromTOS(
-        testConfig,
-        (status, progress) => {
-          setGenerationStatus(status);
-          setGenerationProgress(40 + (progress * 0.4)); // 40-80% range
-        }
+      const testMetadata = {
+        subject: tosMatrix.subject || tosMatrix.course,
+        course: tosMatrix.course,
+        year_section: tosMatrix.year_section,
+        exam_period: tosMatrix.period,
+        school_year: tosMatrix.school_year,
+        tos_id: tosMatrix.id,
+      };
+
+      const result = await generateTestFromTOS(
+        criteria,
+        `${tosMatrix.course || 'Examination'} - ${tosMatrix.period || 'Test'}`,
+        testMetadata
       );
       
       setGenerationProgress(90);
-      setGenerationStatus("Finalizing test generation...");
-      
-      // Save generated questions to database if they're new AI questions
-      if (result.statistics.ai_generated > 0) {
-        const aiQuestions = result.questions.filter((q: any) => q.created_by === 'ai');
-        // These would be inserted by the edge function or here
-      }
+      setGenerationStatus("Test saved successfully!");
       
       setGenerationProgress(100);
-      setGenerationStatus("Test generation complete!");
+      setGenerationStatus("Redirecting to test preview...");
       
-      toast.success(`Successfully generated ${result.questions.length} questions!`);
+      toast.success(`Successfully generated test with ${result.questions.length} questions!`);
       
-      if (result.statistics.ai_generated > 0) {
-        toast.info(`Generated ${result.statistics.ai_generated} new AI questions to fill gaps`);
-      }
+      // Redirect to the generated test page
+      setTimeout(() => {
+        navigate(`/teacher/generated-test/${result.id}`);
+      }, 500);
       
-      if (result.generation_log.some((log: any) => log.generated > 0)) {
-        setTimeout(() => {
-          const generatedTopics = result.generation_log
-            .filter((log: any) => log.generated > 0)
-            .map((log: any) => `${log.topic} (${log.generated} questions)`)
-            .join(', ');
-          toast.warning(`Generated questions for: ${generatedTopics}`);
-        }, 1000);
-      }
     } catch (error) {
       console.error('Error generating test:', error);
-      toast.error('Failed to generate test. Please try again.');
+      toast.error(error instanceof Error ? error.message : 'Failed to generate test. Please try again.');
     } finally {
       setIsGeneratingTest(false);
       setTimeout(() => {
