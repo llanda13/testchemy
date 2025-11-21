@@ -20,6 +20,7 @@ import { usePresence } from "@/hooks/usePresence";
 import { buildTestConfigFromTOS } from "@/utils/testVersions";
 import { SufficiencyAnalysisPanel } from "@/components/analysis/SufficiencyAnalysisPanel";
 import { generateTestFromTOS, TOSCriteria } from "@/services/ai/testGenerationService";
+import { generateCompleteTestFromTOS } from "@/services/ai/completeTestGenerationService";
 import { useNavigate } from "react-router-dom";
 
 const topicSchema = z.object({
@@ -258,45 +259,144 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
   };
 
   const handleGenerateTest = async () => {
-    if (!tosMatrix) return;
+    if (!tosMatrix) {
+      toast.error("TOS data missing. Please generate the matrix first.");
+      return;
+    }
+
+    // Validate TOS data structure
+    if (!tosMatrix.topics || !Array.isArray(tosMatrix.topics)) {
+      toast.error("TOS data is incomplete. Cannot generate test.");
+      return;
+    }
     
     setIsGeneratingTest(true);
     setGenerationProgress(0);
     setGenerationStatus("Initializing test generation...");
     
     try {
+      // Save TOS to database first - CRITICAL: Must exist before generating test
+      let savedTOSId = tosMatrix.id;
+      
+      console.log("🔍 Verifying TOS before test generation...", { currentId: savedTOSId });
+      
+      // Always verify and create TOS if needed
+      let tosExists = false;
+      
+      if (savedTOSId && !savedTOSId.startsWith('temp-')) {
+        // Check if TOS actually exists in database
+        try {
+          const existingTOS = await TOS.getById(savedTOSId);
+          tosExists = !!existingTOS;
+          console.log("✅ TOS found in database:", existingTOS.id);
+        } catch (error) {
+          console.warn("⚠️ TOS ID exists in state but not in database:", savedTOSId);
+          tosExists = false;
+        }
+      }
+      
+      // If TOS doesn't exist or has temp ID, create it now
+      if (!tosExists || !savedTOSId || savedTOSId.startsWith('temp-')) {
+        setGenerationStatus("Saving TOS to database...");
+        console.log("💾 Creating new TOS entry in database...");
+        
+        const { id, ...tosDataWithoutId } = tosMatrix;
+        
+        try {
+          const savedTOS = await TOS.create(tosDataWithoutId);
+          
+          if (!savedTOS || !savedTOS.id) {
+            throw new Error("TOS creation failed - no ID returned");
+          }
+          
+          savedTOSId = savedTOS.id;
+          setTosMatrix({ ...tosMatrix, id: savedTOSId });
+          console.log("✅ TOS created successfully:", savedTOSId);
+        } catch (createError) {
+          console.error("❌ Failed to create TOS:", createError);
+          throw new Error(`Failed to save TOS: ${createError instanceof Error ? createError.message : 'Unknown error'}`);
+        }
+      }
+      
+      // Final validation - ensure we have a valid TOS ID
+      if (!savedTOSId || savedTOSId.startsWith('temp-')) {
+        throw new Error("Invalid TOS ID - cannot generate test");
+      }
+      
+      console.log("✅ TOS validation complete. Using ID:", savedTOSId);
+
       setGenerationProgress(20);
       setGenerationStatus("Analyzing TOS matrix and building criteria...");
       
-      // Build criteria from TOS competencies
-      const criteria: TOSCriteria[] = tosMatrix.competencies.flatMap((comp: any) =>
-        [
-          { topic: comp.topic_name, bloom_level: 'Remembering', knowledge_dimension: 'Factual', difficulty: 'Easy', count: comp.remembering_items || 0 },
-          { topic: comp.topic_name, bloom_level: 'Understanding', knowledge_dimension: 'Conceptual', difficulty: 'Easy', count: comp.understanding_items || 0 },
-          { topic: comp.topic_name, bloom_level: 'Applying', knowledge_dimension: 'Procedural', difficulty: 'Average', count: comp.applying_items || 0 },
-          { topic: comp.topic_name, bloom_level: 'Analyzing', knowledge_dimension: 'Conceptual', difficulty: 'Average', count: comp.analyzing_items || 0 },
-          { topic: comp.topic_name, bloom_level: 'Evaluating', knowledge_dimension: 'Metacognitive', difficulty: 'Difficult', count: comp.evaluating_items || 0 },
-          { topic: comp.topic_name, bloom_level: 'Creating', knowledge_dimension: 'Metacognitive', difficulty: 'Difficult', count: comp.creating_items || 0 },
-        ].filter(c => c.count > 0)
-      );
+      // Build criteria from TOS topics – support both legacy `distribution` and new `matrix` shapes
+      const criteria: TOSCriteria[] = [];
+
+      const difficultyFor = (bloom: string) => {
+        const b = bloom.toLowerCase();
+        if (b === 'remembering' || b === 'understanding') return 'easy';
+        if (b === 'applying' || b === 'analyzing') return 'average';
+        return 'difficult'; // evaluating, creating
+      };
+
+      const levels: Array<keyof any> = [
+        'remembering',
+        'understanding',
+        'applying',
+        'analyzing',
+        'evaluating',
+        'creating',
+      ];
+
+      for (const topic of (tosMatrix.topics || [])) {
+        const topicName = topic.name || topic.topic; // tolerate both shapes
+        if (!topicName) continue;
+
+        const matrixEntry = tosMatrix.matrix?.[topicName];
+        const distributionEntry = tosMatrix.distribution?.[topicName];
+
+        for (const level of levels) {
+          let count = 0;
+          // New matrix format: { count, items }
+          if (matrixEntry?.[level]?.count != null) {
+            count = Number(matrixEntry[level].count) || 0;
+          } else if (Array.isArray(distributionEntry?.[level])) {
+            // Legacy distribution arrays
+            count = (distributionEntry[level] as number[]).length;
+          }
+
+          if (count > 0) {
+            criteria.push({
+              topic: topicName,
+              bloom_level: String(level),
+              knowledge_dimension: level === 'remembering' ? 'Factual' : level === 'applying' ? 'Procedural' : level === 'creating' || level === 'evaluating' ? 'Metacognitive' : 'Conceptual',
+              difficulty: difficultyFor(String(level)),
+              count,
+            });
+          }
+        }
+      }
+
+      if (criteria.length === 0) {
+        setIsGeneratingTest(false);
+        toast.error('No items found in the TOS matrix. Please generate the TOS first.');
+        return;
+      }
       
       setGenerationProgress(40);
       setGenerationStatus("Querying question bank and generating AI questions...");
       
-      const testMetadata = {
-        subject: tosMatrix.subject || tosMatrix.course,
+      const testData = {
+        title: `${tosMatrix.course || 'Examination'} - ${tosMatrix.exam_period || tosMatrix.period || 'Test'}`,
+        subject: tosMatrix.subject_no || tosMatrix.subject || tosMatrix.course,
         course: tosMatrix.course,
         year_section: tosMatrix.year_section,
-        exam_period: tosMatrix.period,
+        exam_period: tosMatrix.exam_period || tosMatrix.period,
         school_year: tosMatrix.school_year,
-        tos_id: tosMatrix.id,
+        tos_id: savedTOSId,
       };
 
-      const result = await generateTestFromTOS(
-        criteria,
-        `${tosMatrix.course || 'Examination'} - ${tosMatrix.period || 'Test'}`,
-        testMetadata
-      );
+      // Use the new complete test generation service with AI fallback
+      const result = await generateCompleteTestFromTOS(tosMatrix, testData);
       
       setGenerationProgress(90);
       setGenerationStatus("Test saved successfully!");
@@ -304,11 +404,11 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
       setGenerationProgress(100);
       setGenerationStatus("Redirecting to test preview...");
       
-      toast.success(`Successfully generated test with ${result.questions.length} questions!`);
+      toast.success(`Successfully generated test!`);
       
       // Redirect to the generated test page
       setTimeout(() => {
-        navigate(`/teacher/generated-test/${result.id}`);
+        navigate(`/teacher/generated-test/${result.testId}`);
       }, 500);
       
     } catch (error) {
