@@ -33,7 +33,7 @@ const tosSchema = z.object({
   course: z.string().min(1, "Course is required"),
   description: z.string().min(1, "Subject description is required"),
   year_section: z.string().min(1, "Year & section is required"),
-  period: z.string().min(1, "Exam period is required"),
+  exam_period: z.string().min(1, "Exam period is required"),
   school_year: z.string().min(1, "School year is required"),
   total_items: z.number().min(10, "Minimum 10 items required").max(100, "Maximum 100 items allowed"),
   topics: z.array(topicSchema).min(1, "At least one topic is required")
@@ -189,7 +189,7 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
       course: data.course,
       description: data.description,
       year_section: data.year_section,
-      period: data.period,
+      exam_period: data.exam_period,
       school_year: data.school_year,
       total_items: data.total_items,
       topics: data.topics,
@@ -386,11 +386,11 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
       setGenerationStatus("Querying question bank and generating AI questions...");
       
       const testData = {
-        title: `${tosMatrix.course || 'Examination'} - ${tosMatrix.exam_period || tosMatrix.period || 'Test'}`,
+        title: `${tosMatrix.course || 'Examination'} - ${tosMatrix.exam_period || 'Test'}`,
         subject: tosMatrix.subject_no || tosMatrix.subject || tosMatrix.course,
         course: tosMatrix.course,
         year_section: tosMatrix.year_section,
-        exam_period: tosMatrix.exam_period || tosMatrix.period,
+        exam_period: tosMatrix.exam_period,
         school_year: tosMatrix.school_year,
         tos_id: savedTOSId,
       };
@@ -561,11 +561,11 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
                 <Label htmlFor="examPeriod">Exam Period</Label>
                 <Input
                   id="examPeriod"
-                  {...register("period")}
+                  {...register("exam_period")}
                   placeholder="e.g., Final Examination"
                 />
-                {errors.period && (
-                  <p className="text-sm text-destructive mt-1">{errors.period.message}</p>
+                {errors.exam_period && (
+                  <p className="text-sm text-destructive mt-1">{errors.exam_period.message}</p>
                 )}
               </div>
 
