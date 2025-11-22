@@ -193,12 +193,12 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
       school_year: data.school_year,
       total_items: data.total_items,
       topics: data.topics,
-      bloom_distribution: bloomDistribution,
       matrix,
-      totalHours,
       prepared_by: "Teacher",
       noted_by: "Dean, CCIS",
-      created_at: new Date().toISOString()
+      // Keep these for UI display only (not saved to DB)
+      bloom_distribution: bloomDistribution,
+      totalHours
     };
   };
 
@@ -245,11 +245,11 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
     if (!tosMatrix) return;
     
     try {
-      // Remove temporary ID and totalHours before saving (not in schema)
-      const { id, totalHours, ...tosData } = tosMatrix;
+      // Remove fields not in database schema
+      const { id, totalHours, bloom_distribution, ...tosData } = tosMatrix;
       
       const savedTOS = await TOS.create(tosData);
-      setTosMatrix({ ...savedTOS, totalHours: tosMatrix.totalHours });
+      setTosMatrix({ ...savedTOS, totalHours: tosMatrix.totalHours, bloom_distribution: tosMatrix.bloom_distribution });
       
       toast.success("TOS matrix saved successfully!");
     } catch (error) {
@@ -300,7 +300,7 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
         setGenerationStatus("Saving TOS to database...");
         console.log("💾 Creating new TOS entry in database...");
         
-        const { id, totalHours, ...tosDataWithoutId } = tosMatrix;
+        const { id, totalHours, bloom_distribution, ...tosDataWithoutId } = tosMatrix;
         
         try {
           const savedTOS = await TOS.create(tosDataWithoutId);
