@@ -245,8 +245,8 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
     if (!tosMatrix) return;
     
     try {
-      // Remove temporary ID before saving
-      const { id, ...tosData } = tosMatrix;
+      // Remove temporary ID and totalHours before saving (not in schema)
+      const { id, totalHours, ...tosData } = tosMatrix;
       
       const savedTOS = await TOS.create(tosData);
       setTosMatrix({ ...savedTOS, totalHours: tosMatrix.totalHours });
@@ -300,7 +300,7 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
         setGenerationStatus("Saving TOS to database...");
         console.log("💾 Creating new TOS entry in database...");
         
-        const { id, ...tosDataWithoutId } = tosMatrix;
+        const { id, totalHours, ...tosDataWithoutId } = tosMatrix;
         
         try {
           const savedTOS = await TOS.create(tosDataWithoutId);
