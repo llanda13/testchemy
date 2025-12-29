@@ -44,16 +44,16 @@ export async function generateTestFromTOS(
   for (const criteria of tosCriteria) {
     console.log(`\n📊 Processing Criteria: ${criteria.topic} | ${criteria.bloom_level} | ${criteria.difficulty} | Need: ${criteria.count}`);
     
-    // Step 1: Query existing approved questions matching criteria
+    // Step 1: Query existing AVAILABLE questions matching criteria (not just approved)
+    const normalizedTopic = criteria.topic.toLowerCase().replace(/[_\-]/g, ' ').trim();
+    const normalizedBloom = criteria.bloom_level.toLowerCase().trim();
+    
     const { data: existingQuestions, error: queryError } = await supabase
       .from('questions')
       .select('*')
-      .eq('topic', criteria.topic)
-      .eq('bloom_level', criteria.bloom_level)
-      .eq('difficulty', criteria.difficulty)
-      .eq('approved', true)
-      .eq('status', 'approved')
-      .eq('deleted', false);
+      .eq('deleted', false)
+      .or(`topic.ilike.%${normalizedTopic}%,topic.ilike.%${criteria.topic}%`)
+      .or(`bloom_level.ilike.${normalizedBloom},bloom_level.ilike.${criteria.bloom_level}`);
 
     if (queryError) {
       console.error("❌ Error querying questions:", queryError);
@@ -149,7 +149,8 @@ export async function generateTestFromTOS(
     items: selectedQuestions,
     answer_key: answerKey,
     tos_id: testMetadata?.tos_id || null,
-    points_per_question: testMetadata?.points_per_question || 1
+    points_per_question: testMetadata?.points_per_question || 1,
+    created_by: user.id  // Required for RLS policy
   };
 
   console.log(`\n💾 Saving test to database...`);
@@ -167,7 +168,19 @@ export async function generateTestFromTOS(
     throw new Error("Cannot save test without valid TOS ID");
   }
   
-  console.log(`   ✓ TOS ID validated: ${testData.tos_id}`);
+  // Verify TOS exists in database
+  const { data: tosEntry, error: tosError } = await supabase
+    .from('tos_entries')
+    .select('id')
+    .eq('id', testData.tos_id)
+    .single();
+
+  if (tosError || !tosEntry) {
+    console.error("❌ TOS entry not found:", testData.tos_id);
+    throw new Error(`TOS entry not found (${testData.tos_id}). Please create TOS first.`);
+  }
+  
+  console.log(`   ✓ TOS exists in database: ${testData.tos_id}`);
 
   const { data: generatedTest, error: insertError } = await supabase
     .from('generated_tests')
