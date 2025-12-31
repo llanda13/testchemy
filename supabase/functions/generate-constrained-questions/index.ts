@@ -428,15 +428,27 @@ serve(async (req) => {
 
     const questions = generatedQuestions.questions || [];
     
-    // FIX #4: Apply structural rejection rule
+    // FIX #4 & #5: Apply structural rejection and uniqueness check
+    const usedConceptsInBatch = new Set<string>();
     const validQuestions = questions
       .filter((q: any) => q.text && q.text.length > 10)
       .map((q: any, idx: number) => {
         const answerType = q.answer_type || (isIntentDriven && intents[idx] ? intents[idx].answer_type : getDefaultAnswerType(bloom_level));
         const answer = q.answer || '';
         
-        // Check for structural violations
+        // FIX #4: Check for structural violations
         const rejection = shouldRejectAnswer(answerType, answer, bloom_level);
+        
+        // FIX #5: Extract concept and check uniqueness
+        const concept = extractConcept(q.text);
+        const conceptKey = `${topic.toLowerCase()}|${concept}|${answerType}`;
+        const isDuplicateConcept = usedConceptsInBatch.has(conceptKey);
+        
+        if (!isDuplicateConcept) {
+          usedConceptsInBatch.add(conceptKey);
+        }
+        
+        const isValid = !rejection.reject && !isDuplicateConcept;
         
         return {
           text: q.text,
@@ -450,13 +462,14 @@ serve(async (req) => {
           topic,
           question_type,
           answer_type: answerType,
+          concept_targeted: concept,
           bloom_alignment_note: q.bloom_alignment_note,
           knowledge_alignment_note: q.knowledge_alignment_note,
           answer_type_note: q.answer_type_note,
           structure_validation: q.structure_validation,
           // Include validation status
-          structure_validated: !rejection.reject,
-          rejection_reason: rejection.reason,
+          structure_validated: isValid,
+          rejection_reason: rejection.reason || (isDuplicateConcept ? `Duplicate concept: ${concept} with same answer type` : undefined),
           // Include intent info if available
           intent_answer_type: isIntentDriven && intents[idx] ? intents[idx].answer_type : undefined
         };
@@ -465,10 +478,10 @@ serve(async (req) => {
     // Count rejected questions
     const rejectedCount = validQuestions.filter((q: any) => !q.structure_validated).length;
     if (rejectedCount > 0) {
-      console.warn(`⚠️ ${rejectedCount} question(s) failed structural validation`);
+      console.warn(`⚠️ ${rejectedCount} question(s) failed validation (structure or uniqueness)`);
     }
 
-    console.log(`Generated ${validQuestions.length} questions (${validQuestions.length - rejectedCount} passed structure validation)`);
+    console.log(`Generated ${validQuestions.length} questions (${validQuestions.length - rejectedCount} passed all validations)`);
 
     return new Response(
       JSON.stringify({
@@ -478,7 +491,8 @@ serve(async (req) => {
         validation_summary: {
           total: validQuestions.length,
           passed: validQuestions.length - rejectedCount,
-          failed: rejectedCount
+          failed: rejectedCount,
+          concepts_used: Array.from(usedConceptsInBatch)
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -493,3 +507,34 @@ serve(async (req) => {
     );
   }
 });
+
+/**
+ * FIX #5: Extract concept from question text
+ */
+function extractConcept(questionText: string): string {
+  const lowerText = questionText.toLowerCase();
+  
+  const patterns = [
+    /(?:key|main|primary|important)\s+(?:factors?|elements?|components?)\s+(?:of|in|for)\s+([^?.,]+)/i,
+    /what\s+(?:are|is)\s+(?:the\s+)?([^?.,]+)/i,
+    /compare\s+([^?.,]+)\s+(?:and|with|to)/i,
+    /differentiate\s+(?:between\s+)?([^?.,]+)/i,
+    /evaluate\s+(?:the\s+)?([^?.,]+)/i,
+    /(?:explain|describe|analyze|assess)\s+(?:the\s+)?([^?.,]+)/i
+  ];
+  
+  for (const pattern of patterns) {
+    const match = lowerText.match(pattern);
+    if (match?.[1]) {
+      return match[1].trim().substring(0, 40);
+    }
+  }
+  
+  // Fallback: first meaningful words
+  const words = lowerText
+    .replace(/[?.,!]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 3 && !['what', 'which', 'when', 'where', 'how', 'does', 'the', 'are'].includes(w));
+  
+  return words.slice(0, 3).join(' ') || 'general';
+}
