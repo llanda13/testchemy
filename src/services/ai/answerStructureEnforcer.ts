@@ -1,19 +1,26 @@
 /**
  * Answer Structure Enforcer - Prevents Redundancy by Design
  * 
- * This module enforces that GPT never chooses structure - the system does.
+ * Implements 5 FIXES for intent-driven generation:
+ * FIX #1: Concept-level locking
+ * FIX #2: Cognitive operation enforcement  
+ * FIX #3: Answer structure enforcement
+ * FIX #4: Structural answer validation
+ * FIX #5: Question uniqueness check
+ * 
+ * GPT never chooses structure - the system does.
  * Each answer_type has explicit structural requirements that must be met.
  */
 
 import type { AnswerType, KnowledgeDimension } from '@/types/knowledge';
 
 /**
- * Bloom levels that FORBID generic listing answers
+ * Bloom levels that FORBID generic listing answers (FIX #1)
  */
 export const HIGHER_ORDER_BLOOMS = ['Analyzing', 'Evaluating', 'Creating'] as const;
 
 /**
- * Forbidden patterns for higher-order Bloom levels
+ * FIX #4: Forbidden patterns for higher-order Bloom levels
  * If answer matches these, it must be regenerated
  */
 export const FORBIDDEN_LISTING_PATTERNS = [
@@ -23,7 +30,22 @@ export const FORBIDDEN_LISTING_PATTERNS = [
   /\bkey\s+(factors|elements|components)\s+(are|include)\b/i,
   /\bthe\s+(main|key|primary)\s+\w+\s+(are|include)\b/i,
   /\bthese\s+(are|include)\b/i,
+  /\bthe following\b/i,
+  /\bfirst,?\s+second,?\s+third\b/i, // Generic enumeration
 ];
+
+/**
+ * FIX #2: Cognitive Operation to Answer Type Mapping
+ * Each Bloom level has allowed operations that map to specific answer types
+ */
+export const BLOOM_TO_ANSWER_TYPES: Record<string, AnswerType[]> = {
+  'Remembering': ['definition'],
+  'Understanding': ['definition', 'explanation'],
+  'Applying': ['application', 'procedure'],
+  'Analyzing': ['comparison', 'analysis'],
+  'Evaluating': ['evaluation', 'justification'],
+  'Creating': ['design', 'construction'],
+};
 
 /**
  * Verb to Answer Type Mapping
@@ -71,6 +93,7 @@ export const VERB_TO_ANSWER_TYPE: Record<string, { answerType: AnswerType; bloom
   'defend': { answerType: 'justification', bloom: 'Evaluating' },
   'argue': { answerType: 'justification', bloom: 'Evaluating' },
   'judge': { answerType: 'evaluation', bloom: 'Evaluating' },
+  'prioritize': { answerType: 'evaluation', bloom: 'Evaluating' },
   
   // Creating
   'design': { answerType: 'design', bloom: 'Creating' },
@@ -84,63 +107,74 @@ export const VERB_TO_ANSWER_TYPE: Record<string, { answerType: AnswerType; bloom
 };
 
 /**
- * Explicit Answer Structure Prompts
+ * FIX #3: Explicit Answer Structure Prompts
  * These tell GPT exactly HOW to structure each answer type
  */
 export const ANSWER_STRUCTURE_PROMPTS: Record<AnswerType, {
   requirement: string;
   forbiddenPatterns: string[];
   structuralRule: string;
+  requiredElements: string[];
 }> = {
   'definition': {
     requirement: 'State what something IS - terminology, facts, specific details.',
     forbiddenPatterns: [],
     structuralRule: 'Direct statement of meaning or identification. May use listing.',
+    requiredElements: ['clear statement of what something is']
   },
   'explanation': {
     requirement: 'Describe HOW or WHY something works, occurs, or is connected.',
     forbiddenPatterns: ['include', 'such as'],
     structuralRule: 'Must show cause-effect or mechanism. Cannot merely enumerate.',
+    requiredElements: ['cause-effect relationship', 'mechanism description']
   },
   'comparison': {
     requirement: 'Explicitly compare at least TWO elements. State BOTH similarities AND differences.',
     forbiddenPatterns: ['include', 'such as', 'factors'],
     structuralRule: 'Must mention Element A vs Element B. Cannot list features of only one.',
+    requiredElements: ['at least two elements', 'similarities', 'differences']
   },
   'procedure': {
     requirement: 'Outline ordered STEPS or PROCESSES to accomplish something.',
     forbiddenPatterns: ['include', 'such as'],
     structuralRule: 'Must be sequential (Step 1, Step 2...). Cannot be unordered list.',
+    requiredElements: ['numbered/ordered steps', 'sequence indicators']
   },
   'application': {
     requirement: 'USE knowledge to solve a new problem or address a specific scenario.',
     forbiddenPatterns: ['include', 'such as', 'factors are'],
     structuralRule: 'Must reference the specific scenario. Cannot be abstract.',
+    requiredElements: ['scenario reference', 'applied solution']
   },
   'evaluation': {
     requirement: 'Make a JUDGMENT based on criteria. State whether something is effective, valid, or optimal.',
     forbiddenPatterns: ['include', 'such as', 'factors'],
     structuralRule: 'Must contain a verdict (better/worse, effective/ineffective). Cannot merely describe.',
+    requiredElements: ['verdict/judgment', 'criteria used', 'ranking or rating']
   },
   'justification': {
     requirement: 'Provide REASONS and EVIDENCE for a position, decision, or approach.',
     forbiddenPatterns: ['include', 'such as'],
     structuralRule: 'Must contain "because", "therefore", "this works because". Cannot merely list points.',
+    requiredElements: ['position statement', 'supporting reasons', 'evidence']
   },
   'analysis': {
     requirement: 'BREAK DOWN information into components and explain their RELATIONSHIPS.',
     forbiddenPatterns: ['include', 'such as', 'key factors'],
     structuralRule: 'Must identify parts AND how they interact. Cannot list parts without relationships.',
+    requiredElements: ['component identification', 'relationship explanation']
   },
   'design': {
     requirement: 'CREATE a plan, blueprint, or specification for something new.',
     forbiddenPatterns: ['include', 'such as'],
     structuralRule: 'Must have structure (sections, components) and purpose. Cannot be abstract description.',
+    requiredElements: ['structured plan', 'purpose statement', 'component specifications']
   },
   'construction': {
     requirement: 'BUILD or PRODUCE something original and concrete.',
     forbiddenPatterns: ['include'],
     structuralRule: 'Must be a tangible output (example, prototype, solution). Cannot be theoretical.',
+    requiredElements: ['concrete output', 'original creation']
   },
 };
 
@@ -237,8 +271,9 @@ export function getRequiredAnswerType(
 /**
  * Build the answer constraint prompt for a specific answer type
  */
-export function buildAnswerConstraintPrompt(answerType: AnswerType): string {
+export function buildAnswerConstraintPrompt(answerType: AnswerType, bloomLevel: string): string {
   const structure = ANSWER_STRUCTURE_PROMPTS[answerType];
+  const isHigherOrder = HIGHER_ORDER_BLOOMS.includes(bloomLevel as any);
   
   return `
 === ANSWER STRUCTURE CONSTRAINT: ${answerType.toUpperCase()} ===
@@ -247,8 +282,17 @@ REQUIREMENT: ${structure.requirement}
 
 STRUCTURAL RULE: ${structure.structuralRule}
 
-${structure.forbiddenPatterns.length > 0 ? `
-FORBIDDEN (Will cause rejection):
+REQUIRED ELEMENTS:
+${structure.requiredElements.map(e => `- ${e}`).join('\n')}
+
+${structure.forbiddenPatterns.length > 0 || isHigherOrder ? `
+⛔ FORBIDDEN (Will cause rejection):
+${isHigherOrder ? `- "include" / "includes"
+- "such as"
+- "Key factors include..."
+- Generic enumeration of any kind
+- "The following..."
+- Simple numbered lists without analysis` : ''}
 ${structure.forbiddenPatterns.map(p => `- Do NOT use "${p}"`).join('\n')}
 ` : ''}
 
@@ -281,16 +325,7 @@ export function validateAnswerTypeAssignment(
   }
   
   // Check if answer type is appropriate for Bloom level
-  const appropriateTypes: Record<string, AnswerType[]> = {
-    'Remembering': ['definition'],
-    'Understanding': ['definition', 'explanation'],
-    'Applying': ['application', 'procedure'],
-    'Analyzing': ['comparison', 'analysis'],
-    'Evaluating': ['evaluation', 'justification'],
-    'Creating': ['design', 'construction'],
-  };
-  
-  const allowed = appropriateTypes[bloomLevel];
+  const allowed = BLOOM_TO_ANSWER_TYPES[bloomLevel];
   if (allowed && !allowed.includes(assignedAnswerType)) {
     return {
       valid: false,
@@ -300,4 +335,19 @@ export function validateAnswerTypeAssignment(
   }
   
   return { valid: true };
+}
+
+/**
+ * Get the appropriate answer types for a Bloom level
+ */
+export function getAnswerTypesForBloom(bloomLevel: string): AnswerType[] {
+  return BLOOM_TO_ANSWER_TYPES[bloomLevel] || ['explanation'];
+}
+
+/**
+ * Check if an answer type is valid for a Bloom level
+ */
+export function isAnswerTypeValidForBloom(answerType: AnswerType, bloomLevel: string): boolean {
+  const allowed = BLOOM_TO_ANSWER_TYPES[bloomLevel];
+  return allowed ? allowed.includes(answerType) : false;
 }
