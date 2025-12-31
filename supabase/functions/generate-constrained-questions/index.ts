@@ -6,13 +6,30 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+/**
+ * HIGHER ORDER BLOOM LEVELS - These FORBID generic listing
+ */
+const HIGHER_ORDER_BLOOMS = ['Analyzing', 'Evaluating', 'Creating'];
+
+/**
+ * FIX #4: Forbidden patterns for higher-order Bloom levels
+ */
+const FORBIDDEN_LISTING_PATTERNS = [
+  /\b(include|includes)\b/i,
+  /\bsuch as\b/i,
+  /\bfactors\s+(are|include)\b/i,
+  /\bkey\s+(factors|elements|components)\s+(are|include)\b/i,
+  /\bthe\s+(main|key|primary)\s+\w+\s+(are|include)\b/i,
+  /\bthese\s+(are|include)\b/i,
+];
+
 const BLOOM_INSTRUCTIONS: Record<string, string> = {
   'Remembering': 'Focus on recall and recognition. Use verbs: define, list, identify, name, state, recall, recognize.',
-  'Understanding': 'Focus on comprehension and explanation. Use verbs: explain, summarize, describe, interpret, classify, compare.',
+  'Understanding': 'Focus on comprehension and explanation. Use verbs: explain, summarize, describe, interpret, classify.',
   'Applying': 'Focus on using knowledge in new situations. Use verbs: apply, solve, implement, demonstrate, use, execute.',
-  'Analyzing': 'Focus on breaking down information. Use verbs: analyze, compare, examine, differentiate, organize, deconstruct.',
-  'Evaluating': 'Focus on making judgments and decisions. Use verbs: evaluate, justify, critique, assess, argue, defend.',
-  'Creating': 'Focus on producing new or original work. Use verbs: design, create, compose, formulate, construct, generate.'
+  'Analyzing': 'Focus on breaking down information and relationships. Use verbs: analyze, compare, differentiate, examine, deconstruct. NEVER use generic listing.',
+  'Evaluating': 'Focus on making judgments with justification. Use verbs: evaluate, justify, critique, assess, defend. MUST include a verdict.',
+  'Creating': 'Focus on producing new or original work. Use verbs: design, create, compose, formulate, construct. MUST produce tangible output.'
 };
 
 const KNOWLEDGE_INSTRUCTIONS: Record<string, string> = {
@@ -29,7 +46,137 @@ const DIFFICULTY_INSTRUCTIONS: Record<string, string> = {
 };
 
 /**
- * Generate the prompt for intent-driven pipeline (Layer 2: Question Generation)
+ * FIX #2 & #3: Answer Type Structure Prompts
+ * Each answer type has explicit structural requirements
+ */
+const ANSWER_TYPE_STRUCTURES: Record<string, {
+  requirement: string;
+  forbiddenPatterns: string[];
+  structuralRule: string;
+}> = {
+  'definition': {
+    requirement: 'State what something IS - terminology, facts, specific details.',
+    forbiddenPatterns: [],
+    structuralRule: 'Direct statement of meaning or identification. May use listing.',
+  },
+  'explanation': {
+    requirement: 'Describe HOW or WHY something works, occurs, or is connected.',
+    forbiddenPatterns: ['include', 'such as'],
+    structuralRule: 'Must show cause-effect or mechanism. Cannot merely enumerate.',
+  },
+  'comparison': {
+    requirement: 'Explicitly compare at least TWO elements. State BOTH similarities AND differences.',
+    forbiddenPatterns: ['include', 'such as', 'factors'],
+    structuralRule: 'Must mention Element A vs Element B. Cannot list features of only one.',
+  },
+  'procedure': {
+    requirement: 'Outline ordered STEPS or PROCESSES to accomplish something.',
+    forbiddenPatterns: ['include', 'such as'],
+    structuralRule: 'Must be sequential (Step 1, Step 2...). Cannot be unordered list.',
+  },
+  'application': {
+    requirement: 'USE knowledge to solve a new problem or address a specific scenario.',
+    forbiddenPatterns: ['include', 'such as', 'factors are'],
+    structuralRule: 'Must reference the specific scenario. Cannot be abstract.',
+  },
+  'evaluation': {
+    requirement: 'Make a JUDGMENT based on criteria. State whether something is effective, valid, or optimal.',
+    forbiddenPatterns: ['include', 'such as', 'factors'],
+    structuralRule: 'Must contain a verdict (better/worse, effective/ineffective). Cannot merely describe.',
+  },
+  'justification': {
+    requirement: 'Provide REASONS and EVIDENCE for a position, decision, or approach.',
+    forbiddenPatterns: ['include', 'such as'],
+    structuralRule: 'Must contain "because", "therefore", "this works because". Cannot merely list points.',
+  },
+  'analysis': {
+    requirement: 'BREAK DOWN information into components and explain their RELATIONSHIPS.',
+    forbiddenPatterns: ['include', 'such as', 'key factors'],
+    structuralRule: 'Must identify parts AND how they interact. Cannot list parts without relationships.',
+  },
+  'design': {
+    requirement: 'CREATE a plan, blueprint, or specification for something new.',
+    forbiddenPatterns: ['include', 'such as'],
+    structuralRule: 'Must have structure (sections, components) and purpose. Cannot be abstract description.',
+  },
+  'construction': {
+    requirement: 'BUILD or PRODUCE something original and concrete.',
+    forbiddenPatterns: ['include'],
+    structuralRule: 'Must be a tangible output (example, prototype, solution). Cannot be theoretical.',
+  },
+};
+
+/**
+ * FIX #4: Check if answer violates structural constraints
+ */
+function shouldRejectAnswer(
+  answerType: string,
+  answer: string,
+  bloomLevel: string
+): { reject: boolean; reason?: string } {
+  // Skip rejection for definition type - listing is allowed
+  if (answerType === 'definition') {
+    return { reject: false };
+  }
+  
+  // Check if bloom level forbids generic listing
+  const isHigherOrder = HIGHER_ORDER_BLOOMS.includes(bloomLevel);
+  
+  if (isHigherOrder) {
+    for (const pattern of FORBIDDEN_LISTING_PATTERNS) {
+      if (pattern.test(answer)) {
+        return {
+          reject: true,
+          reason: `Answer uses forbidden listing pattern for ${bloomLevel} level`
+        };
+      }
+    }
+  }
+  
+  // Check answer-type-specific forbidden patterns
+  const structure = ANSWER_TYPE_STRUCTURES[answerType];
+  if (structure) {
+    for (const forbidden of structure.forbiddenPatterns) {
+      if (answer.toLowerCase().includes(forbidden.toLowerCase())) {
+        return {
+          reject: true,
+          reason: `Answer uses pattern "${forbidden}" which is forbidden for ${answerType} type`
+        };
+      }
+    }
+  }
+  
+  return { reject: false };
+}
+
+/**
+ * Build answer constraint section for prompt
+ */
+function buildAnswerConstraint(answerType: string, bloomLevel: string): string {
+  const structure = ANSWER_TYPE_STRUCTURES[answerType];
+  if (!structure) return '';
+  
+  const isHigherOrder = HIGHER_ORDER_BLOOMS.includes(bloomLevel);
+  
+  return `
+=== ANSWER STRUCTURE: ${answerType.toUpperCase()} (ENFORCED) ===
+REQUIREMENT: ${structure.requirement}
+STRUCTURAL RULE: ${structure.structuralRule}
+
+${structure.forbiddenPatterns.length > 0 || isHigherOrder ? `
+⛔ FORBIDDEN PATTERNS (WILL CAUSE REJECTION):
+${isHigherOrder ? `- "include" / "includes"
+- "such as"
+- "Key factors include..."
+- Generic enumeration of any kind` : ''}
+${structure.forbiddenPatterns.map(p => `- "${p}"`).join('\n')}
+
+If your answer contains ANY of these patterns, it WILL BE REJECTED and you must regenerate.
+` : ''}`;
+}
+
+/**
+ * Generate the prompt for intent-driven pipeline with enforced answer structure
  */
 function buildIntentDrivenPrompt(
   topic: string,
@@ -39,11 +186,18 @@ function buildIntentDrivenPrompt(
   intents: Array<{ answer_type: string; answer_type_constraint: string }>,
   isMCQ: boolean
 ): string {
-  const questionsToGenerate = intents.map((intent, idx) => 
-    `Question ${idx + 1}: Answer Type = "${intent.answer_type}" → ${intent.answer_type_constraint}`
-  ).join('\n');
+  const questionsToGenerate = intents.map((intent, idx) => {
+    const constraint = buildAnswerConstraint(intent.answer_type, bloomLevel);
+    return `
+--- Question ${idx + 1} ---
+Answer Type: "${intent.answer_type}"
+${constraint}
+${intent.answer_type_constraint}`;
+  }).join('\n');
 
   return `Generate ${intents.length} DISTINCT exam question(s) using the INTENT-DRIVEN PIPELINE.
+
+🚨 CRITICAL: GPT does NOT choose structure. Structure is PRE-ASSIGNED. 🚨
 
 === STRUCTURAL CONSTRAINTS (NON-NEGOTIABLE) ===
 ${questionsToGenerate}
@@ -60,35 +214,56 @@ ${KNOWLEDGE_INSTRUCTIONS[knowledgeDimension.toLowerCase()]}
 === DIFFICULTY: ${difficulty} ===
 ${DIFFICULTY_INSTRUCTIONS[difficulty] || DIFFICULTY_INSTRUCTIONS['Average']}
 
-=== CRITICAL RULES ===
+=== ABSOLUTE RULES (VIOLATION = REJECTION) ===
 1. Each question MUST strictly follow its assigned answer_type
-2. Question ${1} MUST require a "${intents[0]?.answer_type}" type response
-${intents.slice(1).map((i, idx) => `3. Question ${idx + 2} MUST require a "${i.answer_type}" type response`).join('\n')}
-4. NO two questions may test the same reasoning path
+2. Each answer MUST match its structural requirement
+3. NO generic listing for Analyzing/Evaluating/Creating levels
+4. NO "include", "includes", "such as" for non-definition types
 5. Each question must demand a DIFFERENT cognitive operation
+6. Answers that violate structure will be REJECTED and regenerated
 
 ${isMCQ ? `=== MCQ FORMAT ===
 - 4 choices (A, B, C, D)
 - One correct answer
-- Plausible distractors` : `=== ESSAY FORMAT ===
-- Open-ended requiring extended response`}
+- Plausible distractors
+- Correct answer must match the answer_type structure` : `=== ESSAY FORMAT ===
+- Open-ended requiring extended response
+- Model answer must demonstrate the answer_type structure`}
 
 Return JSON:
 {
   "questions": [
     {
-      "text": "Question text",
+      "text": "Question text that demands [answer_type] response",
       ${isMCQ ? `"choices": {"A": "...", "B": "...", "C": "...", "D": "..."},
       "correct_answer": "A",` : `"rubric_points": ["Point 1", "Point 2"],`}
-      "answer": "Model answer that matches the answer_type requirement",
-      "answer_type_note": "How this question requires a [answer_type] response"
+      "answer": "Model answer that STRICTLY follows the ${intents[0]?.answer_type || 'assigned'} structure",
+      "answer_type": "${intents[0]?.answer_type || 'explanation'}",
+      "structure_validation": "How this answer follows the required structure"
     }
   ]
-}`;
+}`
+;
 }
 
 /**
- * Generate the legacy prompt (non-intent-driven)
+ * Get default answer type based on Bloom level
+ */
+function getDefaultAnswerType(bloomLevel: string): string {
+  const defaults: Record<string, string> = {
+    'Remembering': 'definition',
+    'Understanding': 'explanation',
+    'Applying': 'application',
+    'Analyzing': 'analysis',
+    'Evaluating': 'evaluation',
+    'Creating': 'design',
+  };
+  return defaults[bloomLevel] || 'explanation';
+}
+
+/**
+ * Generate the legacy prompt with FIX #1 applied
+ * Now includes anti-listing rules for higher-order Bloom levels
  */
 function buildLegacyPrompt(
   topic: string,
@@ -98,6 +273,10 @@ function buildLegacyPrompt(
   count: number,
   isMCQ: boolean
 ): string {
+  const isHigherOrder = HIGHER_ORDER_BLOOMS.includes(bloomLevel);
+  const defaultAnswerType = getDefaultAnswerType(bloomLevel);
+  const answerConstraint = buildAnswerConstraint(defaultAnswerType, bloomLevel);
+  
   return `Generate ${count} high-quality exam question(s).
 
 === TOPIC ===
@@ -112,11 +291,28 @@ ${KNOWLEDGE_INSTRUCTIONS[knowledgeDimension.toLowerCase()]}
 === DIFFICULTY: ${difficulty} ===
 ${DIFFICULTY_INSTRUCTIONS[difficulty] || DIFFICULTY_INSTRUCTIONS['Average']}
 
+=== REQUIRED ANSWER TYPE: ${defaultAnswerType.toUpperCase()} ===
+${answerConstraint}
+
+${isHigherOrder ? `
+🚨 CRITICAL FOR ${bloomLevel.toUpperCase()} LEVEL 🚨
+You are NOT allowed to answer using:
+- "include" or "includes"
+- "such as"
+- "Key factors include..."
+- Simple listing of factors or elements
+- Generic enumeration
+
+These patterns are FORBIDDEN. Your answer must demonstrate actual ${bloomLevel.toLowerCase()} thinking.
+VIOLATION = REJECTION AND REGENERATION.
+` : ''}
+
 ${isMCQ ? `=== MCQ REQUIREMENTS ===
 - 4 choices (A, B, C, D)
 - One correct answer
-- Plausible distractors` : `=== ESSAY REQUIREMENTS ===
-- Open-ended question`}
+- Plausible distractors
+- Correct answer must demonstrate ${defaultAnswerType} structure` : `=== ESSAY REQUIREMENTS ===
+- Open-ended question requiring ${defaultAnswerType} response`}
 
 Return JSON:
 {
@@ -125,6 +321,8 @@ Return JSON:
       "text": "Question text",
       ${isMCQ ? `"choices": {"A": "...", "B": "...", "C": "...", "D": "..."},
       "correct_answer": "A",` : `"rubric_points": ["Point 1", "Point 2"],`}
+      "answer": "Model answer following ${defaultAnswerType} structure",
+      "answer_type": "${defaultAnswerType}",
       "bloom_alignment_note": "Alignment with ${bloomLevel}",
       "knowledge_alignment_note": "Targets ${knowledgeDimension} knowledge"
     }
@@ -230,33 +428,58 @@ serve(async (req) => {
 
     const questions = generatedQuestions.questions || [];
     
+    // FIX #4: Apply structural rejection rule
     const validQuestions = questions
       .filter((q: any) => q.text && q.text.length > 10)
-      .map((q: any, idx: number) => ({
-        text: q.text,
-        choices: q.choices,
-        correct_answer: q.correct_answer,
-        answer: q.answer,
-        rubric_points: q.rubric_points,
-        bloom_level,
-        knowledge_dimension: knowledge_dimension.toLowerCase(),
-        difficulty,
-        topic,
-        question_type,
-        bloom_alignment_note: q.bloom_alignment_note,
-        knowledge_alignment_note: q.knowledge_alignment_note,
-        answer_type_note: q.answer_type_note,
-        // Include intent info if available
-        intent_answer_type: isIntentDriven && intents[idx] ? intents[idx].answer_type : undefined
-      }));
+      .map((q: any, idx: number) => {
+        const answerType = q.answer_type || (isIntentDriven && intents[idx] ? intents[idx].answer_type : getDefaultAnswerType(bloom_level));
+        const answer = q.answer || '';
+        
+        // Check for structural violations
+        const rejection = shouldRejectAnswer(answerType, answer, bloom_level);
+        
+        return {
+          text: q.text,
+          choices: q.choices,
+          correct_answer: q.correct_answer,
+          answer: q.answer,
+          rubric_points: q.rubric_points,
+          bloom_level,
+          knowledge_dimension: knowledge_dimension.toLowerCase(),
+          difficulty,
+          topic,
+          question_type,
+          answer_type: answerType,
+          bloom_alignment_note: q.bloom_alignment_note,
+          knowledge_alignment_note: q.knowledge_alignment_note,
+          answer_type_note: q.answer_type_note,
+          structure_validation: q.structure_validation,
+          // Include validation status
+          structure_validated: !rejection.reject,
+          rejection_reason: rejection.reason,
+          // Include intent info if available
+          intent_answer_type: isIntentDriven && intents[idx] ? intents[idx].answer_type : undefined
+        };
+      });
+    
+    // Count rejected questions
+    const rejectedCount = validQuestions.filter((q: any) => !q.structure_validated).length;
+    if (rejectedCount > 0) {
+      console.warn(`⚠️ ${rejectedCount} question(s) failed structural validation`);
+    }
 
-    console.log(`Generated ${validQuestions.length} valid questions`);
+    console.log(`Generated ${validQuestions.length} questions (${validQuestions.length - rejectedCount} passed structure validation)`);
 
     return new Response(
       JSON.stringify({
         success: true,
         questions: validQuestions,
-        pipeline_mode: isIntentDriven ? 'intent_driven' : 'legacy'
+        pipeline_mode: isIntentDriven ? 'intent_driven' : 'legacy',
+        validation_summary: {
+          total: validQuestions.length,
+          passed: validQuestions.length - rejectedCount,
+          failed: rejectedCount
+        }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
