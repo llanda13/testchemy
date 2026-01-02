@@ -177,27 +177,44 @@ If your answer contains ANY of these patterns, it WILL BE REJECTED and you must 
 
 /**
  * Generate the prompt for intent-driven pipeline with enforced answer structure
+ * NOW INCLUDES: assigned_concept and assigned_operation for each question
  */
 function buildIntentDrivenPrompt(
   topic: string,
   bloomLevel: string,
   knowledgeDimension: string,
   difficulty: string,
-  intents: Array<{ answer_type: string; answer_type_constraint: string }>,
+  intents: Array<{
+    answer_type: string;
+    answer_type_constraint: string;
+    assigned_concept?: string;
+    assigned_operation?: string;
+    forbidden_patterns?: string[];
+  }>,
   isMCQ: boolean
 ): string {
   const questionsToGenerate = intents.map((intent, idx) => {
     const constraint = buildAnswerConstraint(intent.answer_type, bloomLevel);
+    const conceptSection = intent.assigned_concept 
+      ? `\n🎯 ASSIGNED CONCEPT: "${intent.assigned_concept}" - Your question MUST target this specific concept, not any other.` 
+      : '';
+    const operationSection = intent.assigned_operation
+      ? `\n🧠 REQUIRED COGNITIVE OPERATION: "${intent.assigned_operation}" - The question MUST require this specific mental action.`
+      : '';
+    const forbiddenSection = intent.forbidden_patterns && intent.forbidden_patterns.length > 0
+      ? `\n⛔ FORBIDDEN IN ANSWER: ${intent.forbidden_patterns.map(p => `"${p}"`).join(', ')}`
+      : '';
+    
     return `
 --- Question ${idx + 1} ---
-Answer Type: "${intent.answer_type}"
+Answer Type: "${intent.answer_type}"${conceptSection}${operationSection}${forbiddenSection}
 ${constraint}
 ${intent.answer_type_constraint}`;
   }).join('\n');
 
   return `Generate ${intents.length} DISTINCT exam question(s) using the INTENT-DRIVEN PIPELINE.
 
-🚨 CRITICAL: GPT does NOT choose structure. Structure is PRE-ASSIGNED. 🚨
+🚨 CRITICAL: GPT does NOT choose structure, concept, or operation. ALL ARE PRE-ASSIGNED. 🚨
 
 === STRUCTURAL CONSTRAINTS (NON-NEGOTIABLE) ===
 ${questionsToGenerate}
@@ -215,12 +232,14 @@ ${KNOWLEDGE_INSTRUCTIONS[knowledgeDimension.toLowerCase()]}
 ${DIFFICULTY_INSTRUCTIONS[difficulty] || DIFFICULTY_INSTRUCTIONS['Average']}
 
 === ABSOLUTE RULES (VIOLATION = REJECTION) ===
-1. Each question MUST strictly follow its assigned answer_type
-2. Each answer MUST match its structural requirement
-3. NO generic listing for Analyzing/Evaluating/Creating levels
-4. NO "include", "includes", "such as" for non-definition types
-5. Each question must demand a DIFFERENT cognitive operation
-6. Answers that violate structure will be REJECTED and regenerated
+1. Each question MUST target its ASSIGNED CONCEPT exactly
+2. Each question MUST require its ASSIGNED COGNITIVE OPERATION
+3. Each question MUST strictly follow its assigned answer_type
+4. Each answer MUST match its structural requirement
+5. NO generic listing for Analyzing/Evaluating/Creating levels
+6. NO "include", "includes", "such as" for non-definition types
+7. FORBIDDEN PATTERNS in answers will cause REJECTION
+8. Questions targeting the same concept or operation = REJECTED
 
 ${isMCQ ? `=== MCQ FORMAT ===
 - 4 choices (A, B, C, D)
@@ -234,11 +253,13 @@ Return JSON:
 {
   "questions": [
     {
-      "text": "Question text that demands [answer_type] response",
+      "text": "Question targeting [assigned_concept] requiring [assigned_operation]",
       ${isMCQ ? `"choices": {"A": "...", "B": "...", "C": "...", "D": "..."},
       "correct_answer": "A",` : `"rubric_points": ["Point 1", "Point 2"],`}
       "answer": "Model answer that STRICTLY follows the ${intents[0]?.answer_type || 'assigned'} structure",
       "answer_type": "${intents[0]?.answer_type || 'explanation'}",
+      "targeted_concept": "${intents[0]?.assigned_concept || 'assigned concept'}",
+      "cognitive_operation_used": "${intents[0]?.assigned_operation || 'assigned operation'}",
       "structure_validation": "How this answer follows the required structure"
     }
   ]
