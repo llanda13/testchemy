@@ -83,10 +83,26 @@ export const BLOOM_COGNITIVE_OPERATIONS: Record<string, {
  * Intent Registry - tracks used intents for an exam/generation session
  * Now includes concept and operation tracking (FIX #1 & #2)
  */
+/**
+ * Serializable registry state for session persistence
+ */
+export interface RegistrySnapshot {
+  usedIntents: string[];
+  usedConcepts: Record<string, string[]>;
+  usedOperations: Record<string, string[]>;
+  usedPairs: string[]; // concept::operation pairs
+}
+
+/**
+ * Intent Registry - tracks used intents for an exam/generation session
+ * Now includes concept and operation tracking (FIX #1 & #2)
+ * FIXED: Now fully serializable for session persistence
+ */
 export class IntentRegistry {
   private usedIntents: Set<string> = new Set();
   private usedConcepts: Map<string, Set<string>> = new Map();
   private usedOperations: Map<string, Set<string>> = new Map();
+  private usedPairs: Set<string> = new Set(); // concept::operation pairs
   
   /**
    * Create a unique key for an intent tuple
@@ -172,6 +188,22 @@ export class IntentRegistry {
   }
   
   /**
+   * NEW: Check if a concept+operation pair has been used
+   */
+  isPairUsed(concept: string, operation: string): boolean {
+    const pairKey = `${concept.toLowerCase()}::${operation.toLowerCase()}`;
+    return this.usedPairs.has(pairKey);
+  }
+  
+  /**
+   * NEW: Mark a concept+operation pair as used
+   */
+  markPairUsed(concept: string, operation: string): void {
+    const pairKey = `${concept.toLowerCase()}::${operation.toLowerCase()}`;
+    this.usedPairs.add(pairKey);
+  }
+  
+  /**
    * Get all used intents for a topic + bloom + knowledge combination
    */
   getUsedAnswerTypes(
@@ -224,6 +256,7 @@ export class IntentRegistry {
     this.usedIntents.clear();
     this.usedConcepts.clear();
     this.usedOperations.clear();
+    this.usedPairs.clear();
   }
   
   /**
@@ -236,7 +269,7 @@ export class IntentRegistry {
   /**
    * Get usage summary
    */
-  getSummary(): { intents: number; concepts: number; operations: number } {
+  getSummary(): { intents: number; concepts: number; operations: number; pairs: number } {
     let conceptCount = 0;
     this.usedConcepts.forEach(set => conceptCount += set.size);
     
@@ -246,8 +279,75 @@ export class IntentRegistry {
     return {
       intents: this.usedIntents.size,
       concepts: conceptCount,
-      operations: opCount
+      operations: opCount,
+      pairs: this.usedPairs.size
     };
+  }
+  
+  /**
+   * CRITICAL: Serialize registry state for transmission to edge function
+   */
+  toSnapshot(): RegistrySnapshot {
+    const usedConcepts: Record<string, string[]> = {};
+    this.usedConcepts.forEach((set, key) => {
+      usedConcepts[key] = Array.from(set);
+    });
+    
+    const usedOperations: Record<string, string[]> = {};
+    this.usedOperations.forEach((set, key) => {
+      usedOperations[key] = Array.from(set);
+    });
+    
+    return {
+      usedIntents: Array.from(this.usedIntents),
+      usedConcepts,
+      usedOperations,
+      usedPairs: Array.from(this.usedPairs)
+    };
+  }
+  
+  /**
+   * CRITICAL: Restore registry state from snapshot
+   */
+  static fromSnapshot(snapshot: RegistrySnapshot): IntentRegistry {
+    const registry = new IntentRegistry();
+    
+    snapshot.usedIntents.forEach(intent => registry.usedIntents.add(intent));
+    
+    Object.entries(snapshot.usedConcepts).forEach(([key, values]) => {
+      registry.usedConcepts.set(key, new Set(values));
+    });
+    
+    Object.entries(snapshot.usedOperations).forEach(([key, values]) => {
+      registry.usedOperations.set(key, new Set(values));
+    });
+    
+    snapshot.usedPairs.forEach(pair => registry.usedPairs.add(pair));
+    
+    return registry;
+  }
+  
+  /**
+   * Merge another registry into this one (for batch updates)
+   */
+  merge(other: IntentRegistry): void {
+    other.usedIntents.forEach(intent => this.usedIntents.add(intent));
+    
+    other.usedConcepts.forEach((set, key) => {
+      if (!this.usedConcepts.has(key)) {
+        this.usedConcepts.set(key, new Set());
+      }
+      set.forEach(concept => this.usedConcepts.get(key)!.add(concept));
+    });
+    
+    other.usedOperations.forEach((set, key) => {
+      if (!this.usedOperations.has(key)) {
+        this.usedOperations.set(key, new Set());
+      }
+      set.forEach(op => this.usedOperations.get(key)!.add(op));
+    });
+    
+    other.usedPairs.forEach(pair => this.usedPairs.add(pair));
   }
 }
 
