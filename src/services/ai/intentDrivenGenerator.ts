@@ -167,11 +167,12 @@ export async function generateWithIntent(
     };
   }
 
-  // Build intent payloads with concept and operation assignments
-  const intentPayloads = buildIntentPayloads(intents, registry);
-  
-  // Get current registry snapshot to send to edge function
+  // Snapshot BEFORE reserving assignments.
+  // The edge function must validate against committed history only.
   const registrySnapshot = registry.toSnapshot();
+
+  // Build intent payloads with concept and operation assignments (reserves in local registry)
+  const intentPayloads = buildIntentPayloads(intents, registry);
 
   console.log(`[Intent-Driven] Generating ${intents.length} questions for ${topic}/${bloomLevel}`);
   console.log(`[Intent-Driven] Registry state: ${registrySnapshot.usedPairs.length} pairs used`);
