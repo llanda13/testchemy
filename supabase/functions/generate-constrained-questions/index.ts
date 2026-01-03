@@ -585,23 +585,49 @@ serve(async (req) => {
             isMCQ
           );
 
-          const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${openAIApiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: 'gpt-4o-mini',
-              messages: [
-                { role: 'system', content: systemPromptIntentDriven },
-                { role: 'user', content: promptSingle }
-              ],
-              response_format: { type: "json_object" },
-              temperature: 0.2,
-              max_tokens: 2000
-            }),
-          });
+          let resp: Response;
+          let rateLimitRetries = 0;
+          const maxRateLimitRetries = 5;
+
+          // Retry loop for rate limits with exponential backoff
+          while (true) {
+            resp = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${openAIApiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: [
+                  { role: 'system', content: systemPromptIntentDriven },
+                  { role: 'user', content: promptSingle }
+                ],
+                response_format: { type: "json_object" },
+                temperature: 0.2,
+                max_tokens: 2000
+              }),
+            });
+
+            // Handle rate limit with exponential backoff
+            if (resp.status === 429) {
+              rateLimitRetries++;
+              if (rateLimitRetries > maxRateLimitRetries) {
+                console.error('Rate limit exceeded after max retries');
+                return new Response(
+                  JSON.stringify({ error: 'Rate limit exceeded. Please try again in a few minutes.' }),
+                  { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+              }
+              // Exponential backoff: 5s, 10s, 20s, 40s, 80s
+              const waitTime = Math.pow(2, rateLimitRetries) * 2500;
+              console.log(`Rate limited. Waiting ${waitTime}ms before retry ${rateLimitRetries}/${maxRateLimitRetries}...`);
+              await new Promise(resolve => setTimeout(resolve, waitTime));
+              continue;
+            }
+
+            break;
+          }
 
           if (!resp.ok) {
             const t = await resp.text();
@@ -706,23 +732,47 @@ serve(async (req) => {
       });
     }
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt }
-        ],
-        response_format: { type: "json_object" },
-        temperature: isIntentDriven ? 0.2 : 0.4, // Even lower temp for strict compliance
-        max_tokens: 3000
-      }),
-    });
+    let response: Response;
+    let rateLimitRetries = 0;
+    const maxRateLimitRetries = 5;
+
+    // Retry loop for rate limits with exponential backoff
+    while (true) {
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openAIApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+          ],
+          response_format: { type: "json_object" },
+          temperature: isIntentDriven ? 0.2 : 0.4,
+          max_tokens: 3000
+        }),
+      });
+
+      if (response.status === 429) {
+        rateLimitRetries++;
+        if (rateLimitRetries > maxRateLimitRetries) {
+          console.error('Rate limit exceeded after max retries');
+          return new Response(
+            JSON.stringify({ error: 'Rate limit exceeded. Please try again in a few minutes.' }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        const waitTime = Math.pow(2, rateLimitRetries) * 2500;
+        console.log(`Rate limited. Waiting ${waitTime}ms before retry ${rateLimitRetries}/${maxRateLimitRetries}...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+
+      break;
+    }
 
     if (!response.ok) {
       const error = await response.text();
