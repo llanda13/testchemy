@@ -393,36 +393,54 @@ async function generateQuestionsWithAI(
 
   console.log(`   ✅ Successfully inserted ${insertedQuestions?.length || 0} questions into bank`);
 
-  // Log AI generation for tracking (best-effort)
+  // Log AI generation for tracking (best-effort, fire-and-forget)
   for (const question of insertedQuestions || []) {
-    supabase.from('ai_generation_logs').insert({
-      question_id: question.id,
-      generation_type: 'tos_generation',
-      prompt_used: `Intent-driven: ${bloomCanonical} (${knowledgeDimension}) on ${criteria.topic}`,
-      model_used: 'intent_driven_pipeline',
-      generated_by: userId
-    }).catch(() => {});
+    (async () => {
+      try {
+        await supabase.from('ai_generation_logs').insert({
+          question_id: question.id,
+          generation_type: 'tos_generation',
+          prompt_used: `Intent-driven: ${bloomCanonical} (${knowledgeDimension}) on ${criteria.topic}`,
+          model_used: 'intent_driven_pipeline',
+          generated_by: userId
+        });
+      } catch {
+        // Best-effort logging, ignore errors
+      }
+    })();
   }
 
-  // Semantic vector generation (async)
+  // Semantic vector generation (async, fire-and-forget)
   for (const question of insertedQuestions || []) {
-    supabase.functions.invoke('update-semantic', {
-      body: {
-        question_id: question.id,
-        question_text: question.question_text
+    (async () => {
+      try {
+        await supabase.functions.invoke('update-semantic', {
+          body: {
+            question_id: question.id,
+            question_text: question.question_text
+          }
+        });
+      } catch (err) {
+        console.error('   ⚠️ Error updating semantic vector:', err);
       }
-    }).catch(err => console.error('   ⚠️ Error updating semantic vector:', err));
+    })();
   }
 
-  // Semantic similarity calculation (async)
+  // Semantic similarity calculation (async, fire-and-forget)
   for (const question of insertedQuestions || []) {
-    supabase.functions.invoke('semantic-similarity', {
-      body: {
-        questionText: question.question_text,
-        questionId: question.id,
-        threshold: 0.7
+    (async () => {
+      try {
+        await supabase.functions.invoke('semantic-similarity', {
+          body: {
+            questionText: question.question_text,
+            questionId: question.id,
+            threshold: 0.7
+          }
+        });
+      } catch (err) {
+        console.error('   ⚠️ Error storing semantic similarity:', err);
       }
-    }).catch(err => console.error('   ⚠️ Error storing semantic similarity:', err));
+    })();
   }
 
   return insertedQuestions || questionsToInsert;
