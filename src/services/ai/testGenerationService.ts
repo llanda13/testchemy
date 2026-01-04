@@ -1,7 +1,4 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { KnowledgeDimension } from "@/types/knowledge";
-import { generateWithIntent, IntentRegistry } from "./intentDrivenGenerator";
-
 
 export interface TOSCriteria {
   topic: string;
@@ -43,10 +40,6 @@ export async function generateTestFromTOS(
   const selectedQuestions: any[] = [];
   const answerKey: any[] = [];
   let questionNumber = 1;
-
-  // Session-level persistence: one registry for the whole test generation run
-  // (prevents repeating the same concept + operation across criteria)
-  const sessionIntentRegistry = new IntentRegistry();
 
   for (const criteria of tosCriteria) {
     console.log(`\n📊 Processing Criteria: ${criteria.topic} | ${criteria.bloom_level} | ${criteria.difficulty} | Need: ${criteria.count}`);
@@ -93,8 +86,7 @@ export async function generateTestFromTOS(
         const newQuestions = await generateQuestionsWithAI(
           criteria,
           neededCount,
-          user.id,
-          sessionIntentRegistry
+          user.id
         );
         console.log(`   ✓ AI generated ${newQuestions.length} questions`);
         console.log(`   📄 Sample AI question:`, newQuestions[0] ? {
@@ -282,102 +274,102 @@ async function selectNonRedundantQuestions(
 /**
  * Generate new questions using AI when existing questions are insufficient
  */
-/**
- * Generate new questions using AI when existing questions are insufficient
- *
- * IMPORTANT: This uses the intent-driven pipeline (concept + operation + answer structure)
- * so redundancy becomes structurally impossible.
- */
 async function generateQuestionsWithAI(
   criteria: TOSCriteria,
   count: number,
-  userId: string,
-  registry: IntentRegistry
+  userId: string
 ): Promise<any[]> {
-  console.log(`   🤖 Calling intent-driven AI generation...`);
-  console.log(
-    `      Topic: ${criteria.topic}, Bloom: ${criteria.bloom_level}, Difficulty: ${criteria.difficulty}, Count: ${count}`
-  );
-
-  const bloomRaw = String(criteria.bloom_level || '').toLowerCase().trim();
-  const difficultyRaw = String(criteria.difficulty || 'average').toLowerCase().trim();
-
-  const bloomCanonicalMap: Record<string, string> = {
-    remember: 'Remembering',
-    remembering: 'Remembering',
-    understand: 'Understanding',
-    understanding: 'Understanding',
-    apply: 'Applying',
-    applying: 'Applying',
-    analyze: 'Analyzing',
-    analyzing: 'Analyzing',
-    evaluate: 'Evaluating',
-    evaluating: 'Evaluating',
-    create: 'Creating',
-    creating: 'Creating'
-  };
-
-  const bloomCanonical = bloomCanonicalMap[bloomRaw] || 'Understanding';
-  const bloomStored = (bloomRaw in bloomCanonicalMap ? bloomRaw : 'understanding').endsWith('ing')
-    ? (bloomRaw in bloomCanonicalMap ? bloomRaw : 'understanding')
-    : (bloomRaw in bloomCanonicalMap ? `${bloomRaw}ing` : 'understanding');
-
-  const difficultyStored =
-    difficultyRaw === 'medium' ? 'average' :
-    difficultyRaw === 'hard' ? 'difficult' :
-    difficultyRaw;
-
-  const difficultyCanonical =
-    difficultyStored === 'easy' ? 'Easy' :
-    difficultyStored === 'difficult' ? 'Difficult' :
-    'Average';
-
-  const knowledgeDimension = (String(criteria.knowledge_dimension || 'conceptual').toLowerCase().trim() as KnowledgeDimension);
-
-  // Keep question types stable: only "Creating" becomes essay, others default to MCQ.
-  // (Avoids changing UI behavior while eliminating verb-swapping redundancy.)
-  const questionType: 'mcq' | 'essay' = bloomCanonical === 'Creating' ? 'essay' : 'mcq';
-
-  const result = await generateWithIntent({
-    topic: criteria.topic,
-    bloomLevel: bloomCanonical,
-    knowledgeDimension,
-    difficulty: difficultyCanonical,
-    count,
-    questionType,
-    registry
+  console.log(`   🤖 Calling AI generation edge function...`);
+  console.log(`      Topic: ${criteria.topic}, Bloom: ${criteria.bloom_level}, Difficulty: ${criteria.difficulty}, Count: ${count}`);
+  
+  // Use the edge function to generate questions with proper distribution
+  const { data, error } = await supabase.functions.invoke('generate-questions-from-tos', {
+    body: {
+      tos_id: 'temp-generation',
+      total_items: count,
+      distributions: [{
+        topic: criteria.topic,
+        counts: {
+          remembering: criteria.bloom_level.toLowerCase() === 'remembering' ? count : 0,
+          understanding: criteria.bloom_level.toLowerCase() === 'understanding' ? count : 0,
+          applying: criteria.bloom_level.toLowerCase() === 'applying' ? count : 0,
+          analyzing: criteria.bloom_level.toLowerCase() === 'analyzing' ? count : 0,
+          evaluating: criteria.bloom_level.toLowerCase() === 'evaluating' ? count : 0,
+          creating: criteria.bloom_level.toLowerCase() === 'creating' ? count : 0,
+          difficulty: {
+            easy: criteria.difficulty.toLowerCase() === 'easy' ? count : 0,
+            average: criteria.difficulty.toLowerCase() === 'average' ? count : 0,
+            difficult: criteria.difficulty.toLowerCase() === 'difficult' ? count : 0
+          }
+        }
+      }],
+      allow_unapproved: false,
+      prefer_existing: true
+    }
   });
 
-  if (!result.success) {
-    throw new Error(result.error || 'Intent-driven AI generation failed');
+  if (error) {
+    console.error("   ❌ Edge function error:", error);
+    console.error("      Error details:", JSON.stringify(error, null, 2));
+    throw new Error("Failed to generate questions: " + (error.message || "Unknown error"));
   }
 
-  const questionsToInsert = (result.questions || []).map((q) => ({
-    question_text: q.text,
-    question_type: questionType,
-    choices: questionType === 'mcq' ? (q.choices || null) : null,
-    correct_answer: questionType === 'mcq' ? (q.correct_answer || 'A') : (q.answer || ''),
-    topic: criteria.topic,
-    bloom_level: bloomStored,
-    difficulty: difficultyStored,
-    knowledge_dimension: knowledgeDimension,
+  if (!data) {
+    console.error("   ❌ No data returned from edge function");
+    throw new Error("No data returned from AI generation");
+  }
+
+  console.log(`   ✓ Edge function response:`, {
+    hasQuestions: !!data.questions,
+    questionCount: data.questions?.length || 0
+  });
+
+  const generatedQuestions = data?.questions || [];
+
+  console.log(`   ✓ Received ${generatedQuestions.length} questions from edge function`);
+
+  // Filter for only AI-generated questions that need to be saved
+  const questionsToSave = generatedQuestions.filter((q: any) => q.created_by === 'ai');
+
+  console.log(`   💾 Questions to save: ${questionsToSave.length} (AI) vs ${generatedQuestions.length - questionsToSave.length} (existing)`);
+
+  if (questionsToSave.length === 0) {
+    console.log(`   ✓ All questions came from existing bank - returning ${generatedQuestions.length} questions`);
+    // All questions came from existing bank
+    return generatedQuestions;
+  }
+
+  console.log(`   💾 Saving ${questionsToSave.length} AI-generated questions to database...`);
+
+  // Store AI-generated questions into the question bank for reuse
+  const questionsToInsert = questionsToSave.map((q: any) => ({
+    question_text: q.question_text,
+    question_type: q.question_type,
+    choices: q.choices,
+    correct_answer: q.correct_answer,
+    topic: q.topic,
+    bloom_level: q.bloom_level,
+    difficulty: q.difficulty,
+    knowledge_dimension: q.knowledge_dimension,
     created_by: 'ai',
     status: 'approved',
     approved: true,
     owner: userId,
-    ai_confidence_score: q.structure_validated === false ? 0.55 : 0.75,
-    needs_review: q.structure_validated === false,
-    metadata: {
-      pipeline_mode: 'intent_driven',
-      assigned_concept: q.assigned_concept,
-      assigned_operation: q.assigned_operation,
-      why_unique: q.why_unique,
-      rejection_reasons: q.rejection_reasons,
-      structure_validated: q.structure_validated
-    }
+    ai_confidence_score: q.ai_confidence_score || 0.6,
+    needs_review: false,
+    metadata: q.metadata || {}
   }));
 
-  console.log(`   💾 Saving ${questionsToInsert.length} intent-driven AI questions to database...`);
+  console.log(`   📝 Insert payload sample:`, {
+    count: questionsToInsert.length,
+    sample: questionsToInsert[0] ? {
+      hasText: !!questionsToInsert[0].question_text,
+      hasAnswer: !!questionsToInsert[0].correct_answer,
+      type: questionsToInsert[0].question_type,
+      topic: questionsToInsert[0].topic,
+      bloom: questionsToInsert[0].bloom_level
+    } : 'none'
+  });
 
   const { data: insertedQuestions, error: insertError } = await supabase
     .from('questions')
@@ -387,63 +379,52 @@ async function generateQuestionsWithAI(
   if (insertError) {
     console.error("   ❌ Error inserting generated questions:", insertError);
     console.error("      Insert error details:", JSON.stringify(insertError, null, 2));
+    // Don't throw - use the generated questions even if save fails
     console.warn("   ⚠️ Using generated questions without saving to bank");
-    return questionsToInsert;
+    return generatedQuestions;
   }
 
   console.log(`   ✅ Successfully inserted ${insertedQuestions?.length || 0} questions into bank`);
 
-  // Log AI generation for tracking (best-effort, fire-and-forget)
+  // Log AI generation for tracking
+  console.log(`   📊 Creating ${insertedQuestions?.length || 0} AI generation log entries...`);
   for (const question of insertedQuestions || []) {
-    (async () => {
-      try {
-        await supabase.from('ai_generation_logs').insert({
-          question_id: question.id,
-          generation_type: 'tos_generation',
-          prompt_used: `Intent-driven: ${bloomCanonical} (${knowledgeDimension}) on ${criteria.topic}`,
-          model_used: 'intent_driven_pipeline',
-          generated_by: userId
-        });
-      } catch {
-        // Best-effort logging, ignore errors
+    await supabase.from('ai_generation_logs').insert({
+      question_id: question.id,
+      generation_type: 'tos_generation',
+      prompt_used: `Generate ${criteria.bloom_level} question on ${criteria.topic} with ${criteria.difficulty} difficulty`,
+      model_used: 'fallback_template',
+      generated_by: userId
+    });
+  }
+  console.log(`   ✅ AI generation logs created`);
+
+  // Generate semantic vectors for new questions (async, don't wait)
+  console.log(`   🔄 Triggering semantic vector generation (async)...`);
+  for (const question of insertedQuestions || []) {
+    supabase.functions.invoke('update-semantic', {
+      body: {
+        question_id: question.id,
+        question_text: question.question_text
       }
-    })();
+    }).catch(err => console.error('   ⚠️ Error updating semantic vector:', err));
   }
 
-  // Semantic vector generation (async, fire-and-forget)
+  // Calculate and store semantic similarities to prevent duplicates (async)
+  console.log(`   🔄 Triggering semantic similarity calculation (async)...`);
   for (const question of insertedQuestions || []) {
-    (async () => {
-      try {
-        await supabase.functions.invoke('update-semantic', {
-          body: {
-            question_id: question.id,
-            question_text: question.question_text
-          }
-        });
-      } catch (err) {
-        console.error('   ⚠️ Error updating semantic vector:', err);
+    supabase.functions.invoke('semantic-similarity', {
+      body: {
+        questionText: question.question_text,
+        questionId: question.id,
+        threshold: 0.7
       }
-    })();
+    }).catch(err => console.error('   ⚠️ Error storing semantic similarity:', err));
   }
 
-  // Semantic similarity calculation (async, fire-and-forget)
-  for (const question of insertedQuestions || []) {
-    (async () => {
-      try {
-        await supabase.functions.invoke('semantic-similarity', {
-          body: {
-            questionText: question.question_text,
-            questionId: question.id,
-            threshold: 0.7
-          }
-        });
-      } catch (err) {
-        console.error('   ⚠️ Error storing semantic similarity:', err);
-      }
-    })();
-  }
-
-  return insertedQuestions || questionsToInsert;
+  console.log(`   ✅ Returning ${insertedQuestions?.length || generatedQuestions.length} questions`);
+  // Return the inserted questions with their IDs
+  return insertedQuestions || generatedQuestions;
 }
 
 /**
