@@ -453,37 +453,18 @@ function validateQuestionMatchesIntent(
   if (answerRejection.reject) {
     reasons.push(answerRejection.reason || 'Answer structure violation');
   }
-
-  // STRICT: the model must echo the assigned fields back exactly (no guessing)
-  const answerTypeOut = String(question.answer_type || '').toLowerCase().trim();
-  const conceptOut = String(question.targeted_concept || '').toLowerCase().trim();
-  const opOut = String(question.cognitive_operation_used || '').toLowerCase().trim();
-
-  if (!answerTypeOut) reasons.push('Missing required field: answer_type');
-  if (!conceptOut) reasons.push('Missing required field: targeted_concept');
-  if (!opOut) reasons.push('Missing required field: cognitive_operation_used');
-
-  if (answerTypeOut && answerTypeOut !== intent.answer_type.toLowerCase()) {
-    reasons.push(`Output answer_type "${question.answer_type}" does not match assigned "${intent.answer_type}"`);
-  }
-  if (conceptOut && conceptOut !== intent.assigned_concept.toLowerCase()) {
-    reasons.push(`Output targeted_concept "${question.targeted_concept}" does not match assigned "${intent.assigned_concept}"`);
-  }
-  if (opOut && opOut !== intent.assigned_operation.toLowerCase()) {
-    reasons.push(`Output cognitive_operation_used "${question.cognitive_operation_used}" does not match assigned "${intent.assigned_operation}"`);
-  }
-
-  // Check if concept was already used (committed history)
+  
+  // Check if concept was already used
   if (isConceptUsedInRegistry(registry, topic, intent.assigned_concept)) {
     reasons.push(`Concept "${intent.assigned_concept}" was already used for this topic`);
   }
-
-  // Check if operation was already used (committed history)
+  
+  // Check if operation was already used
   if (isOperationUsedInRegistry(registry, topic, bloomLevel, intent.assigned_operation)) {
     reasons.push(`Operation "${intent.assigned_operation}" was already used for this topic+bloom`);
   }
-
-  // Check if pair was already used (committed history)
+  
+  // Check if pair was already used
   if (isPairUsedInRegistry(registry, intent.assigned_concept, intent.assigned_operation)) {
     reasons.push(`Concept::Operation pair already used`);
   }
@@ -547,182 +528,14 @@ serve(async (req) => {
       usedPairs: []
     };
 
-    const systemPromptIntentDriven = `You are an expert educational content RENDERER implementing a constrained question generation pipeline. You do NOT make creative decisions. All structural decisions (concept, operation, answer type) have been made for you. Your ONLY job is to render questions that exactly match the assigned constraints. If you cannot satisfy a constraint, you MUST return an error rather than deviate.`;
+    // Build prompt based on pipeline mode
+    const prompt = isIntentDriven
+      ? buildIntentDrivenPrompt(topic, bloom_level, knowledge_dimension, difficulty, intents, registry, isMCQ)
+      : buildLegacyPrompt(topic, bloom_level, knowledge_dimension, difficulty, count, isMCQ);
 
-    // INTENT-DRIVEN MODE: per-question generation with retries + in-function enforcement
-    // This makes redundancy structurally impossible because we update the registry after each accepted item.
-    if (isIntentDriven) {
-      const generated: any[] = [];
-
-      const topicKey = topic.toLowerCase().trim();
-      const bloomKey = `${topic.toLowerCase()}_${bloom_level.toLowerCase()}`;
-
-      const ensureUniquePush = (arr: string[], value: string) => {
-        const v = value.toLowerCase().trim();
-        if (!arr.map(x => x.toLowerCase().trim()).includes(v)) arr.push(value);
-      };
-
-      registry.usedConcepts[topicKey] = registry.usedConcepts[topicKey] || [];
-      registry.usedOperations[bloomKey] = registry.usedOperations[bloomKey] || [];
-
-      console.log(`[INTENT-DRIVEN] Generating ${intents.length} ${question_type} question(s): ${topic} / ${bloom_level} / ${knowledge_dimension}`);
-
-      for (let idx = 0; idx < intents.length; idx++) {
-        const intent = intents[idx] as IntentPayload;
-        console.log(`  Q${idx + 1}: concept="${intent.assigned_concept}", op="${intent.assigned_operation}", type="${intent.answer_type}"`);
-
-        let attempt = 0;
-        let lastReasons: string[] = [];
-
-        while (attempt < 3) {
-          const promptSingle = buildIntentDrivenPrompt(
-            topic,
-            bloom_level,
-            knowledge_dimension,
-            difficulty,
-            [intent],
-            registry,
-            isMCQ
-          );
-
-          let resp: Response;
-          let rateLimitRetries = 0;
-          const maxRateLimitRetries = 5;
-
-          // Retry loop for rate limits with exponential backoff
-          while (true) {
-            resp = await fetch('https://api.openai.com/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${openAIApiKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                model: 'gpt-4o-mini',
-                messages: [
-                  { role: 'system', content: systemPromptIntentDriven },
-                  { role: 'user', content: promptSingle }
-                ],
-                response_format: { type: "json_object" },
-                temperature: 0.2,
-                max_tokens: 2000
-              }),
-            });
-
-            // Handle rate limit with exponential backoff
-            if (resp.status === 429) {
-              rateLimitRetries++;
-              if (rateLimitRetries > maxRateLimitRetries) {
-                console.error('Rate limit exceeded after max retries');
-                return new Response(
-                  JSON.stringify({ error: 'Rate limit exceeded. Please try again in a few minutes.' }),
-                  { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                );
-              }
-              // Exponential backoff: 5s, 10s, 20s, 40s, 80s
-              const waitTime = Math.pow(2, rateLimitRetries) * 2500;
-              console.log(`Rate limited. Waiting ${waitTime}ms before retry ${rateLimitRetries}/${maxRateLimitRetries}...`);
-              await new Promise(resolve => setTimeout(resolve, waitTime));
-              continue;
-            }
-
-            break;
-          }
-
-          if (!resp.ok) {
-            const t = await resp.text();
-            console.error('OpenAI API error:', t);
-            return new Response(
-              JSON.stringify({ error: 'Failed to generate questions from AI service' }),
-              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            );
-          }
-
-          const aiResponse = await resp.json();
-          let parsed: any;
-          try {
-            parsed = JSON.parse(aiResponse.choices[0].message.content);
-          } catch {
-            lastReasons = ['Invalid JSON from model'];
-            attempt++;
-            continue;
-          }
-
-          const q0 = parsed?.questions?.[0];
-          if (!q0?.text || q0.text.length < 10) {
-            lastReasons = ['Model returned no valid question text'];
-            attempt++;
-            continue;
-          }
-
-          const validation = validateQuestionMatchesIntent(q0, intent, topic, bloom_level, registry);
-          if (!validation.valid) {
-            lastReasons = validation.reasons;
-            attempt++;
-            continue;
-          }
-
-          // Commit to registry (now it becomes unavailable for the rest of this request)
-          const concept = intent.assigned_concept;
-          const operation = intent.assigned_operation;
-          const pairKey = `${concept.toLowerCase()}::${operation.toLowerCase()}`;
-          ensureUniquePush(registry.usedPairs, pairKey);
-          ensureUniquePush(registry.usedConcepts[topicKey], concept);
-          ensureUniquePush(registry.usedOperations[bloomKey], operation);
-
-          generated.push({
-            text: q0.text,
-            choices: q0.choices,
-            correct_answer: q0.correct_answer,
-            answer: q0.answer,
-            rubric_points: q0.rubric_points,
-            bloom_level,
-            knowledge_dimension: knowledge_dimension.toLowerCase(),
-            difficulty,
-            topic,
-            question_type,
-            answer_type: intent.answer_type,
-            targeted_concept: concept,
-            cognitive_operation_used: operation,
-            why_unique: q0.why_unique,
-            structure_validated: true
-          });
-
-          break;
-        }
-
-        if (attempt >= 3) {
-          return new Response(
-            JSON.stringify({
-              error: 'Unable to satisfy intent constraints after retries',
-              details: lastReasons,
-              failed_intent: intent
-            }),
-            { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-      }
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          questions: generated,
-          pipeline_mode: 'intent_driven',
-          validation_summary: {
-            total: generated.length,
-            passed: generated.length,
-            failed: 0
-          },
-          updated_registry: registry
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // LEGACY MODE
-    const prompt = buildLegacyPrompt(topic, bloom_level, knowledge_dimension, difficulty, count, isMCQ);
-
-    const systemPrompt = `You are an expert educational content creator specializing in Bloom's taxonomy and knowledge dimensions.`;
+    const systemPrompt = isIntentDriven
+      ? `You are an expert educational content RENDERER implementing a constrained question generation pipeline. You do NOT make creative decisions. All structural decisions (concept, operation, answer type) have been made for you. Your ONLY job is to render questions that exactly match the assigned constraints. If you cannot satisfy a constraint, you MUST return an error rather than deviate.`
+      : `You are an expert educational content creator specializing in Bloom's taxonomy and knowledge dimensions.`;
 
     console.log(`[${isIntentDriven ? 'INTENT-DRIVEN' : 'LEGACY'}] Generating ${isIntentDriven ? intents.length : count} ${question_type} question(s): ${topic} / ${bloom_level} / ${knowledge_dimension}`);
     if (isIntentDriven) {
@@ -732,47 +545,23 @@ serve(async (req) => {
       });
     }
 
-    let response: Response;
-    let rateLimitRetries = 0;
-    const maxRateLimitRetries = 5;
-
-    // Retry loop for rate limits with exponential backoff
-    while (true) {
-      response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openAIApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt }
-          ],
-          response_format: { type: "json_object" },
-          temperature: isIntentDriven ? 0.2 : 0.4,
-          max_tokens: 3000
-        }),
-      });
-
-      if (response.status === 429) {
-        rateLimitRetries++;
-        if (rateLimitRetries > maxRateLimitRetries) {
-          console.error('Rate limit exceeded after max retries');
-          return new Response(
-            JSON.stringify({ error: 'Rate limit exceeded. Please try again in a few minutes.' }),
-            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        const waitTime = Math.pow(2, rateLimitRetries) * 2500;
-        console.log(`Rate limited. Waiting ${waitTime}ms before retry ${rateLimitRetries}/${maxRateLimitRetries}...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        continue;
-      }
-
-      break;
-    }
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openAIApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: isIntentDriven ? 0.2 : 0.4, // Even lower temp for strict compliance
+        max_tokens: 3000
+      }),
+    });
 
     if (!response.ok) {
       const error = await response.text();

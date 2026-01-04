@@ -12,9 +12,6 @@ verify_jwt = true
 [functions.generate-questions-from-tos]
 verify_jwt = true
 
-[functions.generate-constrained-questions]
-verify_jwt = true
-
 [functions.rubrics]
 verify_jwt = true
 
