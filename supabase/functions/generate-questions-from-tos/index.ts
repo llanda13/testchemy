@@ -184,22 +184,18 @@ async function fillSlotsFromBank(
     const [topic, bloom, difficulty] = key.split('::');
     
     // Query bank for matching questions
+    const normalizedBloom = bloom.charAt(0).toUpperCase() + bloom.slice(1).toLowerCase();
+    const bloomVariants = Array.from(new Set([bloom, bloom.toLowerCase(), normalizedBloom]));
+
     let query = supabase
       .from('questions')
       .select('*')
       .eq('deleted', false)
+      .eq('difficulty', difficulty)
+      .ilike('topic', `%${topic}%`)
+      .in('bloom_level', bloomVariants)
       .order('used_count', { ascending: true });
 
-    // Topic matching (case-insensitive, flexible)
-    query = query.or(`topic.ilike.%${topic}%`);
-    
-    // Bloom level matching
-    const normalizedBloom = bloom.charAt(0).toUpperCase() + bloom.slice(1).toLowerCase();
-    query = query.or(`bloom_level.ilike.${bloom},bloom_level.ilike.${normalizedBloom}`);
-    
-    // Difficulty matching
-    query = query.eq('difficulty', difficulty);
-    
     if (!allowUnapproved) {
       query = query.eq('approved', true);
     }
@@ -359,53 +355,79 @@ async function fillSlotsWithAI(
 
   for (const [key, groupSlots] of slotGroups) {
     const [topic, bloom] = key.split('::');
-    
-    // Assign unique concepts and operations for each slot
-    const intents = groupSlots.map(slot => {
-      const concept = selectNextConcept(registry, topic);
-      const operation = selectNextOperation(registry, topic, bloom);
-      const answerType = selectAnswerType(bloom);
-      
-      // Mark as used immediately
-      markConceptUsed(registry, topic, concept);
-      markOperationUsed(registry, topic, bloom, operation);
-      markPairUsed(registry, concept, operation);
-      
-      return {
-        slot,
-        concept,
-        operation,
-        answerType,
-        difficulty: slot.difficulty,
-        knowledgeDimension: slot.knowledgeDimension
-      };
-    });
 
-    // Generate questions for this group
-    try {
-      const questions = await generateQuestionsWithIntents(
-        topic,
-        bloom,
-        intents,
-        openAIApiKey,
-        registry
-      );
+    // Retry per group to ensure we fill as many slots as possible
+    let pendingSlots = [...groupSlots];
+    let attempt = 0;
 
-      // Match questions back to slots
-      for (let i = 0; i < intents.length && i < questions.length; i++) {
-        const slot = intents[i].slot;
-        const question = questions[i];
-        
-        if (question) {
-          registerQuestion(registry, topic, bloom, question);
-          slot.filled = true;
-          slot.question = question;
-          slot.source = 'ai';
-          filledSlots.push(slot);
+    while (pendingSlots.length > 0 && attempt < 3) {
+      attempt++;
+
+      // Assign unique concepts and operations for each pending slot
+      const intents = pendingSlots.map(slot => {
+        const concept = selectNextConcept(registry, topic);
+        const operation = selectNextOperation(registry, topic, bloom);
+        const answerType = selectAnswerType(bloom);
+
+        // Mark as used immediately (so retries advance to fresh intents)
+        markConceptUsed(registry, topic, concept);
+        markOperationUsed(registry, topic, bloom, operation);
+        markPairUsed(registry, concept, operation);
+
+        return {
+          slot,
+          concept,
+          operation,
+          answerType,
+          difficulty: slot.difficulty,
+          knowledgeDimension: slot.knowledgeDimension
+        };
+      });
+
+      try {
+        const questions = await generateQuestionsWithIntents(
+          topic,
+          bloom,
+          intents,
+          openAIApiKey,
+          registry
+        );
+
+        let filledThisAttempt = 0;
+
+        // Match questions back to slots
+        for (let i = 0; i < intents.length && i < questions.length; i++) {
+          const slot = intents[i].slot;
+          const question = questions[i];
+
+          if (question) {
+            registerQuestion(registry, topic, bloom, question);
+            slot.filled = true;
+            slot.question = question;
+            slot.source = 'ai';
+            filledSlots.push(slot);
+            filledThisAttempt++;
+          }
         }
+
+        pendingSlots = pendingSlots.filter(s => !s.filled);
+
+        if (pendingSlots.length > 0) {
+          console.warn(`🔁 Retry ${attempt}/3: ${pendingSlots.length} slots still unfilled for ${key}`);
+        }
+
+        // If we got nothing back, further retries are unlikely to help
+        if (filledThisAttempt === 0) {
+          break;
+        }
+
+      } catch (error) {
+        console.error(`AI generation attempt ${attempt} failed for ${key}:`, error);
       }
-    } catch (error) {
-      console.error(`AI generation failed for ${key}:`, error);
+    }
+
+    if (pendingSlots.length > 0) {
+      console.warn(`⚠️ Could not fill ${pendingSlots.length} slots for ${key} after retries`);
     }
   }
 
@@ -659,9 +681,9 @@ serve(async (req) => {
     // STEP 5: Generate AI questions only for unfilled slots
     const aiFilled = await fillSlotsWithAI(unfilled, registry);
 
-    // STEP 7: Assemble final test
+    // STEP 7: Assemble final test (preserve slot order)
     const allFilledSlots = [...bankFilled, ...aiFilled];
-    const finalQuestions = allFilledSlots
+    const finalQuestions = allSlots
       .filter(s => s.filled && s.question)
       .map(s => s.question)
       .slice(0, body.total_items);

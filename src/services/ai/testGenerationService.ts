@@ -44,42 +44,53 @@ export async function generateTestFromTOS(
   for (const criteria of tosCriteria) {
     console.log(`\n📊 Processing Criteria: ${criteria.topic} | ${criteria.bloom_level} | ${criteria.difficulty} | Need: ${criteria.count}`);
     
-    // Step 1: Query existing AVAILABLE questions matching criteria (not just approved)
-    const normalizedTopic = criteria.topic.toLowerCase().replace(/[_\-]/g, ' ').trim();
+    // Step 1: Query existing APPROVED questions matching criteria
+    // (Strict enough to preserve the TOS contract; wide enough to handle case differences)
     const normalizedBloom = criteria.bloom_level.toLowerCase().trim();
-    
+    const bloomVariants = Array.from(
+      new Set([
+        criteria.bloom_level,
+        normalizedBloom,
+        normalizedBloom.charAt(0).toUpperCase() + normalizedBloom.slice(1),
+      ])
+    ).filter(Boolean);
+
     const { data: existingQuestions, error: queryError } = await supabase
       .from('questions')
       .select('*')
       .eq('deleted', false)
-      .or(`topic.ilike.%${normalizedTopic}%,topic.ilike.%${criteria.topic}%`)
-      .or(`bloom_level.ilike.${normalizedBloom},bloom_level.ilike.${criteria.bloom_level}`);
+      .eq('approved', true)
+      .eq('difficulty', criteria.difficulty)
+      .ilike('topic', `%${criteria.topic}%`)
+      .in('bloom_level', bloomVariants)
+      .order('used_count', { ascending: true })
+      .limit(criteria.count * 3);
 
     if (queryError) {
       console.error("❌ Error querying questions:", queryError);
-      continue;
     }
 
-    console.log(`   ✓ Found ${existingQuestions?.length || 0} existing questions`);
+    const safeExistingQuestions = queryError ? [] : (existingQuestions || []);
+    console.log(`   ✓ Found ${safeExistingQuestions.length} existing questions`);
 
     let questionsToUse: any[] = [];
 
-    if (existingQuestions && existingQuestions.length >= criteria.count) {
+    if (safeExistingQuestions.length >= criteria.count) {
       console.log(`   ✓ Sufficient questions available - selecting ${criteria.count} non-redundant`);
       // Step 2: Use semantic similarity to select non-redundant questions
       questionsToUse = await selectNonRedundantQuestions(
-        existingQuestions,
+        safeExistingQuestions,
         criteria.count
       );
       console.log(`   ✓ Selected ${questionsToUse.length} questions`);
     } else {
       // Step 3: Need to generate new questions via AI
-      const neededCount = criteria.count - (existingQuestions?.length || 0);
+      const neededCount = criteria.count - safeExistingQuestions.length;
       console.log(`   ⚠️ Insufficient questions - need ${neededCount} more`);
       console.log(`   🤖 Activating AI Fallback Generation...`);
       
       // Use existing questions first
-      questionsToUse = existingQuestions || [];
+      questionsToUse = safeExistingQuestions;
 
       try {
         // Generate new questions
@@ -335,7 +346,6 @@ async function generateQuestionsWithAI(
 
   if (questionsToSave.length === 0) {
     console.log(`   ✓ All questions came from existing bank - returning ${generatedQuestions.length} questions`);
-    // All questions came from existing bank
     return generatedQuestions;
   }
 
@@ -422,9 +432,21 @@ async function generateQuestionsWithAI(
     }).catch(err => console.error('   ⚠️ Error storing semantic similarity:', err));
   }
 
-  console.log(`   ✅ Returning ${insertedQuestions?.length || generatedQuestions.length} questions`);
-  // Return the inserted questions with their IDs
-  return insertedQuestions || generatedQuestions;
+  // ✅ CRITICAL: Merge bank + AI in the ORIGINAL slot order
+  // The edge function may return bank questions for the gap. We must not drop them.
+  const normalizeText = (t: string) => (t || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const insertedByText = new Map<string, any>();
+  (insertedQuestions || []).forEach((q: any) => insertedByText.set(normalizeText(q.question_text), q));
+
+  const mergedInOrder = generatedQuestions.map((q: any) => {
+    if (q?.created_by === 'ai') {
+      return insertedByText.get(normalizeText(q.question_text)) || q;
+    }
+    return q;
+  });
+
+  console.log(`   ✅ Returning ${mergedInOrder.length} questions (bank + AI)`);
+  return mergedInOrder;
 }
 
 /**
