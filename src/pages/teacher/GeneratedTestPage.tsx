@@ -4,11 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Printer, Download, Key } from "lucide-react";
+import { ArrowLeft, Printer, Download, Key, RefreshCw } from "lucide-react";
 import { GeneratedTests } from "@/services/db/generatedTests";
 import { useToast } from "@/hooks/use-toast";
 import { usePDFExport } from "@/hooks/usePDFExport";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useTestAutoRepair } from "@/hooks/useTestAutoRepair";
 
 interface TestItem {
   question_text?: string;
@@ -68,6 +69,7 @@ export default function GeneratedTestPage() {
   const [test, setTest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showAnswerKey, setShowAnswerKey] = useState(false);
+  const { checkAndRepair, isRepairing, repairResult } = useTestAutoRepair(testId);
 
   useEffect(() => {
     if (testId) {
@@ -78,7 +80,13 @@ export default function GeneratedTestPage() {
   const fetchTest = async () => {
     try {
       setLoading(true);
-      const data = await GeneratedTests.getById(testId!);
+      let data = await GeneratedTests.getById(testId!);
+      
+      // Auto-repair if incomplete
+      if (data) {
+        data = await checkAndRepair(data);
+      }
+      
       setTest(data);
     } catch (error) {
       console.error("Error fetching test:", error);
@@ -116,10 +124,13 @@ export default function GeneratedTestPage() {
     }
   };
 
-  if (loading) {
+  if (loading || isRepairing) {
     return (
       <div className="container mx-auto py-8 space-y-6">
         <Skeleton className="h-12 w-full" />
+        <div className="text-center text-muted-foreground">
+          {isRepairing ? 'Repairing incomplete test...' : 'Loading test...'}
+        </div>
         <Skeleton className="h-64 w-full" />
         <Skeleton className="h-96 w-full" />
       </div>
