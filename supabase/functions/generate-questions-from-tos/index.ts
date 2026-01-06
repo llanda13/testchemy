@@ -681,34 +681,55 @@ serve(async (req) => {
     // STEP 5: Generate AI questions only for unfilled slots
     const aiFilled = await fillSlotsWithAI(unfilled, registry);
 
-    // STEP 7: Assemble final test (preserve slot order)
-    const allFilledSlots = [...bankFilled, ...aiFilled];
-    const finalQuestions = allSlots
-      .filter(s => s.filled && s.question)
-      .map(s => s.question)
-      .slice(0, body.total_items);
+    // ✅ CRITICAL FIX: Merge filled slots by slot ID into allSlots
+    // The original allSlots array is mutated by reference in fillSlotsFromBank
+    // but we need to also apply aiFilled results back
+    const filledById = new Map<string, Slot>();
+    for (const slot of bankFilled) {
+      filledById.set(slot.id, slot);
+    }
+    for (const slot of aiFilled) {
+      if (slot.filled && slot.question) {
+        filledById.set(slot.id, slot);
+      }
+    }
+
+    // STEP 7: Assemble final test (preserve slot order from TOS)
+    const finalQuestions: any[] = [];
+    for (const slot of allSlots) {
+      const filledSlot = filledById.get(slot.id);
+      if (filledSlot && filledSlot.question) {
+        finalQuestions.push(filledSlot.question);
+      }
+    }
+    
+    // Trim to requested total if over
+    const trimmedQuestions = finalQuestions.slice(0, body.total_items);
+    
+    console.log(`📊 Slot assembly: ${allSlots.length} slots → ${bankFilled.length} bank + ${aiFilled.filter(s => s.filled).length} AI = ${finalQuestions.length} total (trimmed to ${trimmedQuestions.length})`);
 
     // Calculate statistics
+    const filledCount = filledById.size;
     const stats = {
-      total_generated: finalQuestions.length,
+      total_generated: trimmedQuestions.length,
       slots_created: allSlots.length,
       from_bank: bankFilled.length,
       ai_generated: aiFilled.filter(s => s.filled).length,
-      unfilled: allSlots.length - allFilledSlots.length,
-      by_bloom: finalQuestions.reduce((acc: Record<string, number>, q: any) => {
+      unfilled: allSlots.length - filledCount,
+      by_bloom: trimmedQuestions.reduce((acc: Record<string, number>, q: any) => {
         const level = q.bloom_level?.toLowerCase() || 'unknown';
         acc[level] = (acc[level] || 0) + 1;
         return acc;
       }, {}),
-      by_difficulty: finalQuestions.reduce((acc: Record<string, number>, q: any) => {
+      by_difficulty: trimmedQuestions.reduce((acc: Record<string, number>, q: any) => {
         acc[q.difficulty || 'average'] = (acc[q.difficulty || 'average'] || 0) + 1;
         return acc;
       }, {}),
-      by_topic: finalQuestions.reduce((acc: Record<string, number>, q: any) => {
+      by_topic: trimmedQuestions.reduce((acc: Record<string, number>, q: any) => {
         acc[q.topic] = (acc[q.topic] || 0) + 1;
         return acc;
       }, {}),
-      needs_review: finalQuestions.filter((q: any) => q.needs_review).length,
+      needs_review: trimmedQuestions.filter((q: any) => q.needs_review).length,
       registry_summary: {
         concepts_used: Object.values(registry.usedConcepts).flat().length,
         operations_used: Object.values(registry.usedOperations).flat().length,
@@ -724,15 +745,18 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true,
-      questions: finalQuestions,
-      generation_log: allSlots.map(s => ({
-        slot_id: s.id,
-        topic: s.topic,
-        bloom: s.bloomLevel,
-        difficulty: s.difficulty,
-        filled: s.filled,
-        source: s.source || 'unfilled'
-      })),
+      questions: trimmedQuestions,
+      generation_log: allSlots.map(s => {
+        const filled = filledById.get(s.id);
+        return {
+          slot_id: s.id,
+          topic: s.topic,
+          bloom: s.bloomLevel,
+          difficulty: s.difficulty,
+          filled: filled?.filled ?? false,
+          source: filled?.source || 'unfilled'
+        };
+      }),
       statistics: stats,
       tos_id: body.tos_id
     }), {
