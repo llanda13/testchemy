@@ -78,17 +78,34 @@ export async function generateTestFromTOS(
     if (safeExistingQuestions.length >= criteria.count) {
       console.log(`   ✓ Sufficient questions available - selecting ${criteria.count} non-redundant`);
       // Step 2: Use semantic similarity to select non-redundant questions
-      questionsToUse = await selectNonRedundantQuestions(
+      const selected = await selectNonRedundantQuestions(
         safeExistingQuestions,
         criteria.count
       );
-      console.log(`   ✓ Selected ${questionsToUse.length} questions`);
+      console.log(`   ✓ Selected ${selected.length} questions`);
+
+      // ✅ ENFORCEMENT: If similarity filtering dropped items, fill the remaining slots via AI.
+      const remaining = criteria.count - selected.length;
+      if (remaining > 0) {
+        console.warn(`   ⚠️ Similarity filtering left a gap of ${remaining} - filling via AI`);
+        const filled = await generateQuestionsWithAI(criteria, remaining, user.id);
+        if ((filled?.length || 0) < remaining) {
+          throw new Error(
+            `Failed to fill required count for ${criteria.topic}/${criteria.bloom_level}/${criteria.difficulty}: ` +
+              `needed ${remaining}, got ${filled?.length || 0}`
+          );
+        }
+        questionsToUse = [...selected, ...filled];
+      } else {
+        questionsToUse = selected;
+      }
+
     } else {
       // Step 3: Need to generate new questions via AI
       const neededCount = criteria.count - safeExistingQuestions.length;
       console.log(`   ⚠️ Insufficient questions - need ${neededCount} more`);
       console.log(`   🤖 Activating AI Fallback Generation...`);
-      
+
       // Use existing questions first
       questionsToUse = safeExistingQuestions;
 
@@ -107,6 +124,13 @@ export async function generateTestFromTOS(
           hasChoices: !!newQuestions[0].choices,
           hasAnswer: !!newQuestions[0].correct_answer
         } : 'none');
+
+        if (newQuestions.length < neededCount) {
+          throw new Error(
+            `Gap generation returned too few items for ${criteria.topic}/${criteria.bloom_level}/${criteria.difficulty}: ` +
+              `needed ${neededCount}, got ${newQuestions.length}`
+          );
+        }
 
         questionsToUse = [...questionsToUse, ...newQuestions];
       } catch (aiError) {
@@ -143,6 +167,17 @@ export async function generateTestFromTOS(
 
   console.log(`\n✅ Assembled ${selectedQuestions.length} total questions`);
   console.log(`📋 Answer key has ${answerKey.length} entries`);
+
+  const requiredTotal = tosCriteria.reduce((sum, c) => sum + (c.count || 0), 0);
+
+  // ✅ ENFORCEMENT: Never save/render a test that doesn't satisfy the TOS total.
+  if (selectedQuestions.length !== requiredTotal) {
+    console.error(`❌ TOS contract violated: assembled ${selectedQuestions.length}/${requiredTotal} questions`);
+    throw new Error(
+      `Test assembly incomplete: generated ${selectedQuestions.length}/${requiredTotal} questions. ` +
+        `Please try again.`
+    );
+  }
 
   if (selectedQuestions.length === 0) {
     console.error("❌ No questions were assembled!");

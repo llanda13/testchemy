@@ -264,9 +264,9 @@ export function TestGenerator({ tosData, onTestGenerated, onCancel }: TestGenera
         ai_generated: data.statistics?.ai_generated || 0
       })
 
-      // Ensure we have the required number of questions
-      if (data.questions.length < tosData.totalItems) {
-        console.warn(`⚠️ Generated ${data.questions.length}/${tosData.totalItems} questions`)
+      // ✅ ENFORCEMENT: Never save an incomplete test.
+      if (data.questions.length !== tosData.totalItems) {
+        throw new Error(`Generated ${data.questions.length}/${tosData.totalItems} questions. Please retry generation.`)
       }
 
       // Number questions sequentially

@@ -89,10 +89,19 @@ export function useTestAutoRepair(testId: string | undefined) {
       const newQuestions = data.questions || [];
       console.log(`✅ Generated ${newQuestions.length} repair questions`);
 
+      if (newQuestions.length < missing) {
+        toast({
+          title: 'Auto-repair incomplete',
+          description: `Only generated ${newQuestions.length}/${missing} missing questions. Test was not updated.`,
+          variant: 'destructive'
+        });
+        return test;
+      }
+
       // Merge with existing items
       const repairedItems = [
         ...items,
-        ...newQuestions.map((q: any, idx: number) => ({
+        ...newQuestions.slice(0, missing).map((q: any, idx: number) => ({
           ...q,
           question_number: currentCount + idx + 1
         }))
