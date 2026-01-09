@@ -29,6 +29,7 @@ interface GenerationInput {
   distributions: TopicDistribution[];
   allow_unapproved?: boolean;
   prefer_existing?: boolean;
+  force_ai_generation?: boolean;  // ✅ Skip bank retrieval, generate all via AI
 }
 
 /**
@@ -671,12 +672,22 @@ serve(async (req) => {
     // STEP 1 & 2: Lock TOS and expand into slots
     const allSlots = expandTOSToSlots(body.distributions);
 
-    // STEP 4: Attempt retrieval from bank first
-    const { filled: bankFilled, unfilled } = await fillSlotsFromBank(
-      allSlots,
-      registry,
-      body.allow_unapproved ?? false
-    );
+    let bankFilled: Slot[] = [];
+    let unfilled: Slot[] = allSlots;
+
+    // ✅ FIX: Skip bank retrieval if force_ai_generation is set
+    if (!body.force_ai_generation) {
+      // STEP 4: Attempt retrieval from bank first
+      const bankResult = await fillSlotsFromBank(
+        allSlots,
+        registry,
+        body.allow_unapproved ?? false
+      );
+      bankFilled = bankResult.filled;
+      unfilled = bankResult.unfilled;
+    } else {
+      console.log(`⚡ force_ai_generation=true: Skipping bank retrieval, generating all ${allSlots.length} slots via AI`);
+    }
 
     // STEP 5: Generate AI questions only for unfilled slots
     const aiFilled = await fillSlotsWithAI(unfilled, registry);

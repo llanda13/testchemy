@@ -328,7 +328,7 @@ async function generateQuestionsWithAI(
   console.log(`   🤖 Calling AI generation edge function...`);
   console.log(`      Topic: ${criteria.topic}, Bloom: ${criteria.bloom_level}, Difficulty: ${criteria.difficulty}, Count: ${count}`);
   
-  // Use the edge function to generate questions with proper distribution
+  // ✅ FIX: Add force_ai_generation flag to ensure AI generates when bank is empty
   const { data, error } = await supabase.functions.invoke('generate-questions-from-tos', {
     body: {
       tos_id: 'temp-generation',
@@ -350,19 +350,23 @@ async function generateQuestionsWithAI(
         }
       }],
       allow_unapproved: false,
-      prefer_existing: true
+      prefer_existing: false,  // ✅ Force AI generation, don't prioritize bank
+      force_ai_generation: true  // ✅ Explicit flag for AI-only mode
     }
   });
 
   if (error) {
     console.error("   ❌ Edge function error:", error);
     console.error("      Error details:", JSON.stringify(error, null, 2));
-    throw new Error("Failed to generate questions: " + (error.message || "Unknown error"));
+    // ✅ Fallback: Generate local template questions instead of failing
+    console.warn("   ⚠️ Edge function failed, generating fallback questions...");
+    return generateFallbackQuestions(criteria, count, userId);
   }
 
   if (!data) {
     console.error("   ❌ No data returned from edge function");
-    throw new Error("No data returned from AI generation");
+    console.warn("   ⚠️ No data returned, generating fallback questions...");
+    return generateFallbackQuestions(criteria, count, userId);
   }
 
   console.log(`   ✓ Edge function response:`, {
@@ -373,6 +377,13 @@ async function generateQuestionsWithAI(
   const generatedQuestions = data?.questions || [];
 
   console.log(`   ✓ Received ${generatedQuestions.length} questions from edge function`);
+
+  // ✅ If edge function returned fewer questions than needed, fill with fallback
+  if (generatedQuestions.length < count) {
+    console.warn(`   ⚠️ Edge function returned ${generatedQuestions.length}/${count}, generating ${count - generatedQuestions.length} fallback questions...`);
+    const fallback = await generateFallbackQuestions(criteria, count - generatedQuestions.length, userId);
+    return [...generatedQuestions, ...fallback];
+  }
 
   // Filter for only AI-generated questions that need to be saved
   const questionsToSave = generatedQuestions.filter((q: any) => q.created_by === 'ai');
@@ -497,4 +508,66 @@ export function generateAnswerKey(questions: any[]): any[] {
     bloom_level: q.bloom_level,
     topic: q.topic
   }));
+}
+
+/**
+ * Generate fallback questions when AI/edge function fails
+ * These are template-based questions that can be edited later
+ */
+async function generateFallbackQuestions(
+  criteria: TOSCriteria,
+  count: number,
+  userId: string
+): Promise<any[]> {
+  console.log(`   🔄 Generating ${count} fallback questions for ${criteria.topic}/${criteria.bloom_level}/${criteria.difficulty}`);
+  
+  const bloomOperations: Record<string, string[]> = {
+    'remembering': ['Define', 'List', 'Identify', 'State', 'Name'],
+    'understanding': ['Explain', 'Describe', 'Summarize', 'Compare', 'Interpret'],
+    'applying': ['Apply', 'Demonstrate', 'Solve', 'Use', 'Implement'],
+    'analyzing': ['Analyze', 'Differentiate', 'Examine', 'Contrast', 'Categorize'],
+    'evaluating': ['Evaluate', 'Justify', 'Assess', 'Critique', 'Defend'],
+    'creating': ['Design', 'Create', 'Develop', 'Formulate', 'Compose']
+  };
+
+  const operations = bloomOperations[criteria.bloom_level.toLowerCase()] || ['Explain'];
+  const questions: any[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const operation = operations[i % operations.length];
+    const questionNumber = i + 1;
+    
+    const questionText = `${operation} the concept of ${criteria.topic} in the context of ${criteria.bloom_level} level understanding. (Question ${questionNumber})`;
+    
+    questions.push({
+      id: `fallback-${Date.now()}-${i}`,
+      question_text: questionText,
+      question_type: 'multiple_choice',
+      choices: {
+        A: `Correct answer related to ${criteria.topic}`,
+        B: `Plausible distractor about ${criteria.topic}`,
+        C: `Another distractor for ${criteria.topic}`,
+        D: `Final option regarding ${criteria.topic}`
+      },
+      correct_answer: 'A',
+      topic: criteria.topic,
+      bloom_level: criteria.bloom_level.charAt(0).toUpperCase() + criteria.bloom_level.slice(1).toLowerCase(),
+      difficulty: criteria.difficulty,
+      knowledge_dimension: criteria.knowledge_dimension || 'conceptual',
+      created_by: 'fallback',
+      status: 'pending_review',
+      approved: false,
+      needs_review: true,
+      owner: userId,
+      ai_confidence_score: 0.3,
+      metadata: { 
+        generated_type: 'fallback_template',
+        requires_human_edit: true,
+        original_criteria: criteria
+      }
+    });
+  }
+
+  console.log(`   ✅ Generated ${questions.length} fallback questions (marked for review)`);
+  return questions;
 }
