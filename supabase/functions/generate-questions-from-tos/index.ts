@@ -29,7 +29,7 @@ interface GenerationInput {
   distributions: TopicDistribution[];
   allow_unapproved?: boolean;
   prefer_existing?: boolean;
-  force_ai_generation?: boolean;  // ✅ Skip bank retrieval, generate all via AI
+  force_ai_generation?: boolean;
 }
 
 /**
@@ -42,6 +42,8 @@ interface Slot {
   bloomLevel: string;
   difficulty: string;
   knowledgeDimension: string;
+  questionType: 'mcq' | 'true_false' | 'essay';  // NEW: Question type assignment
+  points: number;  // NEW: Point value
   filled: boolean;
   question?: any;
   source?: 'bank' | 'ai';
@@ -49,13 +51,12 @@ interface Slot {
 
 /**
  * Registry for tracking used concepts/operations across entire session
- * Prevents redundancy BEFORE generation
  */
 interface GenerationRegistry {
-  usedConcepts: Record<string, string[]>;      // topic -> concepts used
-  usedOperations: Record<string, string[]>;    // topic_bloom -> operations used
-  usedPairs: string[];                          // concept::operation pairs
-  usedQuestionTexts: string[];                  // for text similarity check
+  usedConcepts: Record<string, string[]>;
+  usedOperations: Record<string, string[]>;
+  usedPairs: string[];
+  usedQuestionTexts: string[];
 }
 
 // ============= CONSTANTS =============
@@ -97,6 +98,13 @@ const ANSWER_TYPE_BY_BLOOM: Record<string, string[]> = {
   'creating': ['design', 'construction', 'synthesis']
 };
 
+// POINT VALUES
+const POINTS = {
+  mcq: 1,
+  true_false: 1,
+  essay: 5
+};
+
 // ============= SUPABASE CLIENT =============
 
 const supabase = createClient(
@@ -104,15 +112,57 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 );
 
+// ============= QUESTION TYPE DISTRIBUTION =============
+
+/**
+ * Calculate how many of each question type to generate
+ * Rules:
+ * - Essay: 5 points each, max 1 for ≤50 items, max 2 for ≤100 items
+ * - True/False: 1 point, ~15-20% of remaining items
+ * - MCQ: 1 point, majority (remaining items)
+ */
+function calculateQuestionTypeDistribution(totalItems: number): { mcq: number; true_false: number; essay: number } {
+  // Essay allocation (high value, limited count)
+  let essayCount = 0;
+  if (totalItems >= 30) {
+    essayCount = 1;
+  }
+  if (totalItems >= 80) {
+    essayCount = 2;
+  }
+  
+  const remainingAfterEssay = totalItems - essayCount;
+  
+  // True/False: ~15-20% of remaining, minimum 0
+  const trueFalseCount = Math.max(0, Math.floor(remainingAfterEssay * 0.15));
+  
+  // MCQ: Everything else
+  const mcqCount = remainingAfterEssay - trueFalseCount;
+  
+  console.log(`📊 Question type distribution for ${totalItems} items: MCQ=${mcqCount}, T/F=${trueFalseCount}, Essay=${essayCount}`);
+  
+  return {
+    mcq: mcqCount,
+    true_false: trueFalseCount,
+    essay: essayCount
+  };
+}
+
 // ============= SLOT GENERATION =============
 
 /**
- * STEP 1: Lock the TOS and expand into slots
- * The TOS is immutable - each cell becomes a slot that MUST be filled
+ * STEP 1: Lock the TOS and expand into slots with question types
  */
-function expandTOSToSlots(distributions: TopicDistribution[]): Slot[] {
+function expandTOSToSlots(distributions: TopicDistribution[], totalItems: number): Slot[] {
   const slots: Slot[] = [];
   let slotId = 1;
+
+  // Calculate question type distribution
+  const typeDistribution = calculateQuestionTypeDistribution(totalItems);
+  
+  // Track how many of each type we've assigned
+  let assignedEssay = 0;
+  let assignedTF = 0;
 
   for (const dist of distributions) {
     const topic = dist.topic;
@@ -137,8 +187,29 @@ function expandTOSToSlots(distributions: TopicDistribution[]): Slot[] {
 
       for (const { level, count: diffCount } of difficulties) {
         for (let i = 0; i < diffCount; i++) {
-          // STEP 3: Assign knowledge dimension based on Bloom level
           const knowledgeDimension = BLOOM_KNOWLEDGE_MAPPING[bloom] || 'conceptual';
+          
+          // Assign question type based on bloom level and remaining quotas
+          let questionType: 'mcq' | 'true_false' | 'essay' = 'mcq';
+          let points = POINTS.mcq;
+          
+          // Essay: Only for higher-order blooms (evaluating, creating) and difficult
+          if (assignedEssay < typeDistribution.essay && 
+              (bloom === 'evaluating' || bloom === 'creating') && 
+              level === 'difficult') {
+            questionType = 'essay';
+            points = POINTS.essay;
+            assignedEssay++;
+          }
+          // True/False: Good for remembering/understanding, easy/average difficulty
+          else if (assignedTF < typeDistribution.true_false && 
+                   (bloom === 'remembering' || bloom === 'understanding') && 
+                   (level === 'easy' || level === 'average')) {
+            questionType = 'true_false';
+            points = POINTS.true_false;
+            assignedTF++;
+          }
+          // MCQ: Default for everything else
           
           slots.push({
             id: `slot_${slotId++}`,
@@ -146,6 +217,8 @@ function expandTOSToSlots(distributions: TopicDistribution[]): Slot[] {
             bloomLevel: bloom,
             difficulty: level,
             knowledgeDimension,
+            questionType,
+            points,
             filled: false
           });
         }
@@ -153,16 +226,49 @@ function expandTOSToSlots(distributions: TopicDistribution[]): Slot[] {
     }
   }
 
-  console.log(`📋 Expanded TOS into ${slots.length} slots`);
+  // If we haven't filled essay quota, convert some difficult MCQs
+  if (assignedEssay < typeDistribution.essay) {
+    const difficultMCQs = slots.filter(s => 
+      s.questionType === 'mcq' && 
+      s.difficulty === 'difficult' &&
+      (s.bloomLevel === 'analyzing' || s.bloomLevel === 'evaluating' || s.bloomLevel === 'creating')
+    );
+    
+    for (const slot of difficultMCQs) {
+      if (assignedEssay >= typeDistribution.essay) break;
+      slot.questionType = 'essay';
+      slot.points = POINTS.essay;
+      assignedEssay++;
+    }
+  }
+
+  // If we haven't filled T/F quota, convert some easy MCQs
+  if (assignedTF < typeDistribution.true_false) {
+    const easyMCQs = slots.filter(s => 
+      s.questionType === 'mcq' && 
+      (s.difficulty === 'easy' || s.difficulty === 'average')
+    );
+    
+    for (const slot of easyMCQs) {
+      if (assignedTF >= typeDistribution.true_false) break;
+      slot.questionType = 'true_false';
+      slot.points = POINTS.true_false;
+      assignedTF++;
+    }
+  }
+
+  const typeCounts = {
+    mcq: slots.filter(s => s.questionType === 'mcq').length,
+    true_false: slots.filter(s => s.questionType === 'true_false').length,
+    essay: slots.filter(s => s.questionType === 'essay').length
+  };
+  
+  console.log(`📋 Expanded TOS into ${slots.length} slots: MCQ=${typeCounts.mcq}, T/F=${typeCounts.true_false}, Essay=${typeCounts.essay}`);
   return slots;
 }
 
 // ============= BANK RETRIEVAL =============
 
-/**
- * STEP 4: Attempt retrieval from bank before generation
- * For each slot, try to find a matching question that hasn't been used
- */
 async function fillSlotsFromBank(
   slots: Slot[],
   registry: GenerationRegistry,
@@ -171,10 +277,10 @@ async function fillSlotsFromBank(
   const filled: Slot[] = [];
   const unfilled: Slot[] = [];
 
-  // Group slots by topic+bloom for efficient querying
+  // Group slots by topic+bloom+difficulty+type for efficient querying
   const slotGroups = new Map<string, Slot[]>();
   for (const slot of slots) {
-    const key = `${slot.topic}::${slot.bloomLevel}::${slot.difficulty}`;
+    const key = `${slot.topic}::${slot.bloomLevel}::${slot.difficulty}::${slot.questionType}`;
     if (!slotGroups.has(key)) {
       slotGroups.set(key, []);
     }
@@ -182,9 +288,8 @@ async function fillSlotsFromBank(
   }
 
   for (const [key, groupSlots] of slotGroups) {
-    const [topic, bloom, difficulty] = key.split('::');
+    const [topic, bloom, difficulty, questionType] = key.split('::');
     
-    // Query bank for matching questions
     const normalizedBloom = bloom.charAt(0).toUpperCase() + bloom.slice(1).toLowerCase();
     const bloomVariants = Array.from(new Set([bloom, bloom.toLowerCase(), normalizedBloom]));
 
@@ -193,6 +298,7 @@ async function fillSlotsFromBank(
       .select('*')
       .eq('deleted', false)
       .eq('difficulty', difficulty)
+      .eq('question_type', questionType)
       .ilike('topic', `%${topic}%`)
       .in('bloom_level', bloomVariants)
       .order('used_count', { ascending: true });
@@ -209,22 +315,20 @@ async function fillSlotsFromBank(
       continue;
     }
 
-    // Select non-redundant questions for each slot
     const availableQuestions = [...(bankQuestions || [])];
     
     for (const slot of groupSlots) {
       const selectedQuestion = selectNonRedundantQuestion(
         availableQuestions,
         registry,
-        slot.topic
+        slot.topic,
+        slot.questionType
       );
 
       if (selectedQuestion) {
-        // Remove from available pool
         const idx = availableQuestions.findIndex(q => q.id === selectedQuestion.id);
         if (idx > -1) availableQuestions.splice(idx, 1);
         
-        // Mark as used in registry
         registerQuestion(registry, slot.topic, slot.bloomLevel, selectedQuestion);
         
         slot.filled = true;
@@ -241,18 +345,24 @@ async function fillSlotsFromBank(
   return { filled, unfilled };
 }
 
-/**
- * Select a question that won't create redundancy
- */
 function selectNonRedundantQuestion(
   candidates: any[],
   registry: GenerationRegistry,
-  topic: string
+  topic: string,
+  questionType: string
 ): any | null {
   for (const candidate of candidates) {
+    // For MCQ, validate options exist
+    if (questionType === 'mcq') {
+      const choices = candidate.choices;
+      if (!choices || typeof choices !== 'object') continue;
+      const hasAllOptions = ['A', 'B', 'C', 'D'].every(key => choices[key] && choices[key].trim().length > 0);
+      if (!hasAllOptions) continue;
+      if (!['A', 'B', 'C', 'D'].includes(candidate.correct_answer)) continue;
+    }
+    
     const text = candidate.question_text?.toLowerCase() || '';
     
-    // Check text similarity with already used questions
     const isSimilar = registry.usedQuestionTexts.some(usedText => {
       const similarity = calculateTextSimilarity(text, usedText);
       return similarity > 0.7;
@@ -266,9 +376,6 @@ function selectNonRedundantQuestion(
   return null;
 }
 
-/**
- * Register a question as used to prevent redundancy
- */
 function registerQuestion(
   registry: GenerationRegistry,
   topic: string,
@@ -278,7 +385,6 @@ function registerQuestion(
   const text = question.question_text?.toLowerCase() || '';
   registry.usedQuestionTexts.push(text);
   
-  // Extract and register concept if available
   const concept = question.targeted_concept || extractConcept(text);
   if (concept) {
     if (!registry.usedConcepts[topic]) {
@@ -288,9 +394,6 @@ function registerQuestion(
   }
 }
 
-/**
- * Simple text similarity using word overlap
- */
 function calculateTextSimilarity(text1: string, text2: string): number {
   const words1 = new Set(text1.split(/\s+/).filter(w => w.length > 3));
   const words2 = new Set(text2.split(/\s+/).filter(w => w.length > 3));
@@ -303,11 +406,7 @@ function calculateTextSimilarity(text1: string, text2: string): number {
   return intersection / Math.min(words1.size, words2.size);
 }
 
-/**
- * Extract concept from question text (simple heuristic)
- */
 function extractConcept(text: string): string | null {
-  // Look for common patterns
   const patterns = [
     /(?:define|explain|describe|analyze)\s+(?:the\s+)?(?:concept\s+of\s+)?["']?([^"'.?]+)/i,
     /(?:what\s+is|what\s+are)\s+(?:the\s+)?["']?([^"'.?]+)/i,
@@ -326,10 +425,6 @@ function extractConcept(text: string): string | null {
 
 // ============= AI GENERATION =============
 
-/**
- * STEP 5: AI Generation happens only when needed
- * Each unfilled slot gets a unique intent with pre-assigned concept and operation
- */
 async function fillSlotsWithAI(
   slots: Slot[],
   registry: GenerationRegistry
@@ -342,10 +437,10 @@ async function fillSlotsWithAI(
     return slots.map(s => ({ ...s, filled: false }));
   }
 
-  // Group by topic+bloom for batch generation
+  // Group by topic+bloom+questionType for batch generation
   const slotGroups = new Map<string, Slot[]>();
   for (const slot of slots) {
-    const key = `${slot.topic}::${slot.bloomLevel}`;
+    const key = `${slot.topic}::${slot.bloomLevel}::${slot.questionType}`;
     if (!slotGroups.has(key)) {
       slotGroups.set(key, []);
     }
@@ -355,22 +450,19 @@ async function fillSlotsWithAI(
   const filledSlots: Slot[] = [];
 
   for (const [key, groupSlots] of slotGroups) {
-    const [topic, bloom] = key.split('::');
+    const [topic, bloom, questionType] = key.split('::');
 
-    // Retry per group to ensure we fill as many slots as possible
     let pendingSlots = [...groupSlots];
     let attempt = 0;
 
     while (pendingSlots.length > 0 && attempt < 3) {
       attempt++;
 
-      // Assign unique concepts and operations for each pending slot
       const intents = pendingSlots.map(slot => {
         const concept = selectNextConcept(registry, topic);
         const operation = selectNextOperation(registry, topic, bloom);
         const answerType = selectAnswerType(bloom);
 
-        // Mark as used immediately (so retries advance to fresh intents)
         markConceptUsed(registry, topic, concept);
         markOperationUsed(registry, topic, bloom, operation);
         markPairUsed(registry, concept, operation);
@@ -381,7 +473,9 @@ async function fillSlotsWithAI(
           operation,
           answerType,
           difficulty: slot.difficulty,
-          knowledgeDimension: slot.knowledgeDimension
+          knowledgeDimension: slot.knowledgeDimension,
+          questionType: slot.questionType,
+          points: slot.points
         };
       });
 
@@ -396,12 +490,11 @@ async function fillSlotsWithAI(
 
         let filledThisAttempt = 0;
 
-        // Match questions back to slots
         for (let i = 0; i < intents.length && i < questions.length; i++) {
           const slot = intents[i].slot;
           const question = questions[i];
 
-          if (question) {
+          if (question && validateQuestion(question, slot.questionType)) {
             registerQuestion(registry, topic, bloom, question);
             slot.filled = true;
             slot.question = question;
@@ -417,7 +510,6 @@ async function fillSlotsWithAI(
           console.warn(`🔁 Retry ${attempt}/3: ${pendingSlots.length} slots still unfilled for ${key}`);
         }
 
-        // If we got nothing back, further retries are unlikely to help
         if (filledThisAttempt === 0) {
           break;
         }
@@ -437,17 +529,62 @@ async function fillSlotsWithAI(
 }
 
 /**
- * Select next available concept for topic
+ * Validate question structure based on type
  */
+function validateQuestion(question: any, questionType: string): boolean {
+  if (!question.question_text || question.question_text.length < 10) {
+    return false;
+  }
+
+  if (questionType === 'mcq') {
+    // ENFORCE: Must have exactly 4 options A, B, C, D
+    const choices = question.choices;
+    if (!choices || typeof choices !== 'object') {
+      console.warn('MCQ missing choices object');
+      return false;
+    }
+    
+    const hasAllOptions = ['A', 'B', 'C', 'D'].every(key => 
+      choices[key] && typeof choices[key] === 'string' && choices[key].trim().length > 0
+    );
+    
+    if (!hasAllOptions) {
+      console.warn('MCQ missing one or more options (A, B, C, D)');
+      return false;
+    }
+    
+    // ENFORCE: correct_answer must be A, B, C, or D
+    if (!['A', 'B', 'C', 'D'].includes(question.correct_answer)) {
+      console.warn(`MCQ has invalid correct_answer: ${question.correct_answer}`);
+      return false;
+    }
+  }
+
+  if (questionType === 'true_false') {
+    // ENFORCE: correct_answer must be "True" or "False"
+    if (!['True', 'False', 'true', 'false'].includes(String(question.correct_answer))) {
+      console.warn(`T/F has invalid correct_answer: ${question.correct_answer}`);
+      return false;
+    }
+  }
+
+  if (questionType === 'essay') {
+    // Essay should have rubric or model answer
+    if (!question.answer && !question.rubric) {
+      console.warn('Essay missing model answer or rubric');
+      // Don't reject, just warn - essays are harder to generate
+    }
+  }
+
+  return true;
+}
+
 function selectNextConcept(registry: GenerationRegistry, topic: string): string {
   const used = registry.usedConcepts[topic] || [];
   const available = CONCEPT_POOL.filter(c => !used.includes(c.toLowerCase()));
   return available.length > 0 ? available[0] : CONCEPT_POOL[used.length % CONCEPT_POOL.length];
 }
 
-/**
- * Select next available operation for topic+bloom
- */
 function selectNextOperation(registry: GenerationRegistry, topic: string, bloom: string): string {
   const key = `${topic.toLowerCase()}_${bloom.toLowerCase()}`;
   const used = registry.usedOperations[key] || [];
@@ -456,9 +593,6 @@ function selectNextOperation(registry: GenerationRegistry, topic: string, bloom:
   return available.length > 0 ? available[0] : BLOOM_COGNITIVE_OPERATIONS[bloom][0];
 }
 
-/**
- * Select appropriate answer type for bloom level
- */
 function selectAnswerType(bloom: string): string {
   const types = ANSWER_TYPE_BY_BLOOM[bloom] || ['explanation'];
   return types[Math.floor(Math.random() * types.length)];
@@ -484,7 +618,7 @@ function markPairUsed(registry: GenerationRegistry, concept: string, operation: 
 }
 
 /**
- * Generate questions using intent-driven prompt with hard constraints
+ * Generate questions using intent-driven prompt with strict format enforcement
  */
 async function generateQuestionsWithIntents(
   topic: string,
@@ -496,78 +630,108 @@ async function generateQuestionsWithIntents(
     answerType: string;
     difficulty: string;
     knowledgeDimension: string;
+    questionType: string;
+    points: number;
   }>,
   apiKey: string,
   registry: GenerationRegistry
 ): Promise<any[]> {
   const normalizedBloom = bloom.charAt(0).toUpperCase() + bloom.slice(1).toLowerCase();
   
-  // Build the hard constraint prompt
+  // Group by question type for appropriate prompts
+  const mcqIntents = intents.filter(i => i.questionType === 'mcq');
+  const tfIntents = intents.filter(i => i.questionType === 'true_false');
+  const essayIntents = intents.filter(i => i.questionType === 'essay');
+
+  const allQuestions: any[] = [];
+
+  // Generate MCQ questions
+  if (mcqIntents.length > 0) {
+    const mcqQuestions = await generateMCQQuestions(topic, normalizedBloom, mcqIntents, apiKey, registry);
+    allQuestions.push(...mcqQuestions);
+  }
+
+  // Generate True/False questions
+  if (tfIntents.length > 0) {
+    const tfQuestions = await generateTrueFalseQuestions(topic, normalizedBloom, tfIntents, apiKey, registry);
+    allQuestions.push(...tfQuestions);
+  }
+
+  // Generate Essay questions
+  if (essayIntents.length > 0) {
+    const essayQuestions = await generateEssayQuestions(topic, normalizedBloom, essayIntents, apiKey, registry);
+    allQuestions.push(...essayQuestions);
+  }
+
+  return allQuestions;
+}
+
+/**
+ * Generate MCQ questions with ENFORCED A, B, C, D options
+ */
+async function generateMCQQuestions(
+  topic: string,
+  bloom: string,
+  intents: any[],
+  apiKey: string,
+  registry: GenerationRegistry
+): Promise<any[]> {
   const questionsSpec = intents.map((intent, idx) => `
 Question ${idx + 1}:
-  ASSIGNED CONCEPT: "${intent.concept}" (MUST target exactly this)
-  REQUIRED OPERATION: "${intent.operation}" (MUST require exactly this cognitive action)
-  ANSWER TYPE: "${intent.answerType}" (MUST produce exactly this structure)
+  ASSIGNED CONCEPT: "${intent.concept}"
+  REQUIRED OPERATION: "${intent.operation}"
   DIFFICULTY: "${intent.difficulty}"
-  KNOWLEDGE DIMENSION: "${intent.knowledgeDimension}"
 `).join('\n');
 
   const usedTexts = registry.usedQuestionTexts.slice(-10).map(t => t.substring(0, 100));
   
-  const prompt = `Generate ${intents.length} DISTINCT multiple-choice exam questions.
+  const prompt = `Generate ${intents.length} DISTINCT Multiple Choice Questions (MCQs).
 
-🚨 HARD CONSTRAINTS - VIOLATION = REJECTION 🚨
+🚨 CRITICAL MCQ FORMAT REQUIREMENTS - MUST BE FOLLOWED EXACTLY 🚨
 
 TOPIC: ${topic}
-BLOOM'S LEVEL: ${normalizedBloom}
+BLOOM'S LEVEL: ${bloom}
 
-=== ALREADY USED (DO NOT REPEAT OR PARAPHRASE) ===
+=== ALREADY USED (DO NOT REPEAT) ===
 ${usedTexts.length > 0 ? usedTexts.map((t, i) => `${i + 1}. "${t}..."`).join('\n') : 'None yet'}
 
 === QUESTION SPECIFICATIONS ===
 ${questionsSpec}
 
-=== CRITICAL RULES ===
-1. Each question MUST target ONLY its assigned concept - no substitutions
-2. Each question MUST require EXACTLY its assigned cognitive operation to answer
-3. Questions MUST be COMPLETELY DIFFERENT from each other - different phrasing, different focus
-4. The TOPIC "${topic}" must appear explicitly in each question text
-5. NEVER use the same sentence structure twice
-6. NEVER ask the same thing in different words
+=== MCQ FORMAT - STRICTLY ENFORCED ===
+Each MCQ MUST have:
+1. A clear question stem
+2. EXACTLY 4 options labeled A, B, C, D
+3. Each option MUST be a complete, substantive answer (not blank)
+4. ONE correct answer (A, B, C, or D)
+5. Three plausible distractors that test understanding
+6. Distractors should be related to the topic but incorrect
+7. correct_answer must be RANDOMIZED (not always "A")
 
-=== NON-REDUNDANCY EXAMPLES ===
-REDUNDANT (BAD):
-- "Explain the key factors of ${topic}."
-- "Describe the important factors of ${topic}."
-- "What are the main factors of ${topic}?"
-
-NON-REDUNDANT (GOOD):
-- "Define ${topic} and identify its three primary components." (Remembering - definition)
-- "Explain HOW ${topic} prevents data inconsistencies in multi-user environments." (Understanding - explanation)
-- "A company is experiencing ${topic} failures. Diagnose the root cause." (Analyzing - analysis)
-
-=== MCQ FORMAT ===
-- 4 choices (A, B, C, D)
-- One correct answer
-- Plausible distractors that test understanding
-- Correct answer must match the required answer_type structure
+=== DISTRACTOR QUALITY RULES ===
+- Distractors must be plausible (could fool someone with partial knowledge)
+- Distractors must be clearly wrong to someone who knows the material
+- Distractors should not be obviously absurd
+- Each option should be similar in length and complexity
 
 Return ONLY valid JSON:
 {
   "questions": [
     {
-      "text": "Question targeting [assigned_concept] requiring [assigned_operation]",
-      "choices": {"A": "...", "B": "...", "C": "...", "D": "..."},
-      "correct_answer": "A",
-      "answer": "Model answer demonstrating the answer_type structure",
-      "targeted_concept": "the exact concept this question targets",
-      "cognitive_operation": "the exact operation required to answer",
-      "why_unique": "How this differs from other questions"
+      "text": "Question stem about ${topic}?",
+      "choices": {
+        "A": "First option text (complete sentence or phrase)",
+        "B": "Second option text (complete sentence or phrase)",
+        "C": "Third option text (complete sentence or phrase)",
+        "D": "Fourth option text (complete sentence or phrase)"
+      },
+      "correct_answer": "B",
+      "explanation": "Why B is correct and others are wrong"
     }
   ]
 }`;
 
-  console.log(`🤖 Generating ${intents.length} questions for ${topic}/${normalizedBloom}`);
+  console.log(`🤖 Generating ${intents.length} MCQ questions for ${topic}/${bloom}`);
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -580,20 +744,20 @@ Return ONLY valid JSON:
       messages: [
         {
           role: 'system',
-          content: `You are an expert educational content RENDERER implementing a constrained question generation pipeline. You do NOT make creative decisions. All structural decisions have been made for you. Your ONLY job is to render questions that exactly match the assigned constraints. Each question must be completely unique.`
+          content: `You are an expert educational assessment designer. Generate high-quality Multiple Choice Questions with EXACTLY 4 options (A, B, C, D). Each option must be substantive and plausible. The correct answer should be randomized - not always "A". Never generate questions with blank or placeholder options.`
         },
         { role: 'user', content: prompt }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.3,
+      temperature: 0.4,
       max_tokens: 3000
     }),
   });
 
   if (!response.ok) {
     const error = await response.text();
-    console.error('OpenAI API error:', error);
-    throw new Error('Failed to generate questions from AI service');
+    console.error('OpenAI API error for MCQ:', error);
+    throw new Error('Failed to generate MCQ questions');
   }
 
   const aiResponse = await response.json();
@@ -603,43 +767,284 @@ Return ONLY valid JSON:
     const content = aiResponse.choices[0].message.content;
     generatedQuestions = JSON.parse(content);
   } catch (parseError) {
-    console.error('Failed to parse AI response:', parseError);
-    throw new Error('Invalid response format from AI service');
+    console.error('Failed to parse MCQ response:', parseError);
+    throw new Error('Invalid MCQ response format');
   }
 
-  // STEP 6: Validate and format questions
-  const questions = (generatedQuestions.questions || []).map((q: any, idx: number) => {
+  return (generatedQuestions.questions || []).map((q: any, idx: number) => {
     const intent = intents[idx];
+    
+    // Validate and fix choices if needed
+    let choices = q.choices || {};
+    let correctAnswer = q.correct_answer || 'A';
+    
+    // Ensure all 4 options exist
+    ['A', 'B', 'C', 'D'].forEach(key => {
+      if (!choices[key] || typeof choices[key] !== 'string' || choices[key].trim().length === 0) {
+        choices[key] = `Option ${key} for ${topic}`;
+      }
+    });
+    
+    // Ensure correct_answer is valid
+    if (!['A', 'B', 'C', 'D'].includes(correctAnswer)) {
+      correctAnswer = 'A';
+    }
     
     return {
       id: crypto.randomUUID(),
       question_text: q.text,
       question_type: 'mcq',
-      choices: q.choices,
-      correct_answer: q.correct_answer,
+      choices: choices,
+      correct_answer: correctAnswer,
+      explanation: q.explanation,
       topic: topic,
-      bloom_level: normalizedBloom,
+      bloom_level: bloom,
       difficulty: intent?.difficulty || 'average',
       knowledge_dimension: intent?.knowledgeDimension || 'conceptual',
+      points: POINTS.mcq,
       created_by: 'ai',
       approved: false,
       ai_confidence_score: 0.85,
       needs_review: true,
-      targeted_concept: q.targeted_concept || intent?.concept,
-      cognitive_operation: q.cognitive_operation || intent?.operation,
-      why_unique: q.why_unique,
       metadata: {
         generated_by: 'intent_driven_pipeline',
-        pipeline_version: '2.0',
-        assigned_concept: intent?.concept,
-        assigned_operation: intent?.operation,
-        answer_type: intent?.answerType
+        pipeline_version: '2.1',
+        question_type: 'mcq'
       }
     };
   }).filter((q: any) => q.question_text && q.question_text.length > 10);
+}
 
-  console.log(`✅ Generated ${questions.length} valid questions`);
-  return questions;
+/**
+ * Generate True/False questions
+ */
+async function generateTrueFalseQuestions(
+  topic: string,
+  bloom: string,
+  intents: any[],
+  apiKey: string,
+  registry: GenerationRegistry
+): Promise<any[]> {
+  const questionsSpec = intents.map((intent, idx) => `
+Question ${idx + 1}:
+  CONCEPT: "${intent.concept}"
+  DIFFICULTY: "${intent.difficulty}"
+`).join('\n');
+
+  const prompt = `Generate ${intents.length} DISTINCT True/False questions.
+
+TOPIC: ${topic}
+BLOOM'S LEVEL: ${bloom}
+
+=== QUESTION SPECIFICATIONS ===
+${questionsSpec}
+
+=== TRUE/FALSE FORMAT ===
+1. Statement must be clearly TRUE or FALSE (no ambiguity)
+2. Use factual statements about ${topic}
+3. Avoid trick questions or double negatives
+4. Statement should test understanding, not just memorization
+5. Balance between True and False answers
+
+Return ONLY valid JSON:
+{
+  "questions": [
+    {
+      "text": "Statement about ${topic} that is either true or false.",
+      "correct_answer": "True",
+      "explanation": "Why this statement is true/false"
+    }
+  ]
+}`;
+
+  console.log(`🤖 Generating ${intents.length} T/F questions for ${topic}/${bloom}`);
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You are an expert educational assessment designer. Generate clear True/False questions where the statement is unambiguously true or false. Balance the answers between True and False.`
+        },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.3,
+      max_tokens: 2000
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.error('OpenAI API error for T/F:', error);
+    throw new Error('Failed to generate T/F questions');
+  }
+
+  const aiResponse = await response.json();
+  
+  let generatedQuestions;
+  try {
+    const content = aiResponse.choices[0].message.content;
+    generatedQuestions = JSON.parse(content);
+  } catch (parseError) {
+    console.error('Failed to parse T/F response:', parseError);
+    throw new Error('Invalid T/F response format');
+  }
+
+  return (generatedQuestions.questions || []).map((q: any, idx: number) => {
+    const intent = intents[idx];
+    
+    // Normalize correct_answer
+    let correctAnswer = String(q.correct_answer || 'True');
+    if (correctAnswer.toLowerCase() === 'true') correctAnswer = 'True';
+    else if (correctAnswer.toLowerCase() === 'false') correctAnswer = 'False';
+    else correctAnswer = 'True';
+    
+    return {
+      id: crypto.randomUUID(),
+      question_text: q.text,
+      question_type: 'true_false',
+      choices: { 'True': 'True', 'False': 'False' },
+      correct_answer: correctAnswer,
+      explanation: q.explanation,
+      topic: topic,
+      bloom_level: bloom,
+      difficulty: intent?.difficulty || 'easy',
+      knowledge_dimension: intent?.knowledgeDimension || 'factual',
+      points: POINTS.true_false,
+      created_by: 'ai',
+      approved: false,
+      ai_confidence_score: 0.85,
+      needs_review: true,
+      metadata: {
+        generated_by: 'intent_driven_pipeline',
+        pipeline_version: '2.1',
+        question_type: 'true_false'
+      }
+    };
+  }).filter((q: any) => q.question_text && q.question_text.length > 10);
+}
+
+/**
+ * Generate Essay questions (limited count, high value)
+ */
+async function generateEssayQuestions(
+  topic: string,
+  bloom: string,
+  intents: any[],
+  apiKey: string,
+  registry: GenerationRegistry
+): Promise<any[]> {
+  const questionsSpec = intents.map((intent, idx) => `
+Essay ${idx + 1}:
+  CONCEPT: "${intent.concept}"
+  REQUIRED THINKING: "${intent.operation}"
+  DIFFICULTY: "${intent.difficulty}"
+`).join('\n');
+
+  const prompt = `Generate ${intents.length} Essay questions worth 5 points each.
+
+TOPIC: ${topic}
+BLOOM'S LEVEL: ${bloom} (Higher-order thinking)
+
+=== ESSAY SPECIFICATIONS ===
+${questionsSpec}
+
+=== ESSAY FORMAT ===
+1. Question should require extended written response
+2. Should test higher-order thinking (analysis, evaluation, synthesis)
+3. Should have clear rubric criteria for scoring
+4. Worth 5 points - question complexity should match
+
+Return ONLY valid JSON:
+{
+  "questions": [
+    {
+      "text": "Essay question requiring analysis/evaluation/synthesis about ${topic}",
+      "rubric": {
+        "5_points": "Excellent: Comprehensive analysis with...",
+        "4_points": "Good: Solid understanding with...",
+        "3_points": "Satisfactory: Basic understanding with...",
+        "2_points": "Developing: Limited understanding with...",
+        "1_point": "Beginning: Minimal understanding with..."
+      },
+      "model_answer": "A model answer that demonstrates full understanding..."
+    }
+  ]
+}`;
+
+  console.log(`🤖 Generating ${intents.length} Essay questions for ${topic}/${bloom}`);
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You are an expert educational assessment designer. Generate high-quality essay questions that test higher-order thinking skills. Include a clear rubric for 5-point scoring.`
+        },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.4,
+      max_tokens: 3000
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.error('OpenAI API error for Essay:', error);
+    throw new Error('Failed to generate Essay questions');
+  }
+
+  const aiResponse = await response.json();
+  
+  let generatedQuestions;
+  try {
+    const content = aiResponse.choices[0].message.content;
+    generatedQuestions = JSON.parse(content);
+  } catch (parseError) {
+    console.error('Failed to parse Essay response:', parseError);
+    throw new Error('Invalid Essay response format');
+  }
+
+  return (generatedQuestions.questions || []).map((q: any, idx: number) => {
+    const intent = intents[idx];
+    
+    return {
+      id: crypto.randomUUID(),
+      question_text: q.text,
+      question_type: 'essay',
+      correct_answer: null,
+      answer: q.model_answer,
+      rubric: q.rubric,
+      topic: topic,
+      bloom_level: bloom,
+      difficulty: intent?.difficulty || 'difficult',
+      knowledge_dimension: intent?.knowledgeDimension || 'metacognitive',
+      points: POINTS.essay,
+      created_by: 'ai',
+      approved: false,
+      ai_confidence_score: 0.80,
+      needs_review: true,
+      metadata: {
+        generated_by: 'intent_driven_pipeline',
+        pipeline_version: '2.1',
+        question_type: 'essay'
+      }
+    };
+  }).filter((q: any) => q.question_text && q.question_text.length > 20);
 }
 
 // ============= MAIN HANDLER =============
@@ -656,12 +1061,11 @@ serve(async (req) => {
       throw new Error('Missing required fields: tos_id, total_items, distributions');
     }
 
-    console.log(`\n🎯 === SLOT-BASED TOS GENERATION ===`);
+    console.log(`\n🎯 === SLOT-BASED TOS GENERATION v2.1 ===`);
     console.log(`📋 TOS ID: ${body.tos_id}`);
     console.log(`📊 Total items requested: ${body.total_items}`);
     console.log(`📚 Topics: ${body.distributions.map(d => d.topic).join(', ')}`);
 
-    // Initialize registry for session-level redundancy prevention
     const registry: GenerationRegistry = {
       usedConcepts: {},
       usedOperations: {},
@@ -669,15 +1073,13 @@ serve(async (req) => {
       usedQuestionTexts: []
     };
 
-    // STEP 1 & 2: Lock TOS and expand into slots
-    const allSlots = expandTOSToSlots(body.distributions);
+    // STEP 1: Expand TOS into slots with question types
+    const allSlots = expandTOSToSlots(body.distributions, body.total_items);
 
     let bankFilled: Slot[] = [];
     let unfilled: Slot[] = allSlots;
 
-    // ✅ FIX: Skip bank retrieval if force_ai_generation is set
     if (!body.force_ai_generation) {
-      // STEP 4: Attempt retrieval from bank first
       const bankResult = await fillSlotsFromBank(
         allSlots,
         registry,
@@ -686,15 +1088,13 @@ serve(async (req) => {
       bankFilled = bankResult.filled;
       unfilled = bankResult.unfilled;
     } else {
-      console.log(`⚡ force_ai_generation=true: Skipping bank retrieval, generating all ${allSlots.length} slots via AI`);
+      console.log(`⚡ force_ai_generation=true: Generating all ${allSlots.length} slots via AI`);
     }
 
-    // STEP 5: Generate AI questions only for unfilled slots
+    // STEP 2: Generate AI questions for unfilled slots
     const aiFilled = await fillSlotsWithAI(unfilled, registry);
 
-    // ✅ CRITICAL FIX: Merge filled slots by slot ID into allSlots
-    // The original allSlots array is mutated by reference in fillSlotsFromBank
-    // but we need to also apply aiFilled results back
+    // Merge results
     const filledById = new Map<string, Slot>();
     for (const slot of bankFilled) {
       filledById.set(slot.id, slot);
@@ -705,28 +1105,42 @@ serve(async (req) => {
       }
     }
 
-    // STEP 7: Assemble final test (preserve slot order from TOS)
+    // Assemble final test preserving slot order
     const finalQuestions: any[] = [];
     for (const slot of allSlots) {
       const filledSlot = filledById.get(slot.id);
       if (filledSlot && filledSlot.question) {
+        // Add points to question
+        filledSlot.question.points = filledSlot.points;
         finalQuestions.push(filledSlot.question);
       }
     }
     
-    // Trim to requested total if over
     const trimmedQuestions = finalQuestions.slice(0, body.total_items);
     
-    console.log(`📊 Slot assembly: ${allSlots.length} slots → ${bankFilled.length} bank + ${aiFilled.filter(s => s.filled).length} AI = ${finalQuestions.length} total (trimmed to ${trimmedQuestions.length})`);
+    // Calculate statistics by question type
+    const typeCounts = {
+      mcq: trimmedQuestions.filter(q => q.question_type === 'mcq').length,
+      true_false: trimmedQuestions.filter(q => q.question_type === 'true_false').length,
+      essay: trimmedQuestions.filter(q => q.question_type === 'essay').length
+    };
+    
+    const totalPoints = trimmedQuestions.reduce((sum, q) => sum + (q.points || 1), 0);
 
-    // Calculate statistics
-    const filledCount = filledById.size;
+    console.log(`📊 Final assembly: ${trimmedQuestions.length} questions`);
+    console.log(`   MCQ: ${typeCounts.mcq} (${typeCounts.mcq * POINTS.mcq} pts)`);
+    console.log(`   T/F: ${typeCounts.true_false} (${typeCounts.true_false * POINTS.true_false} pts)`);
+    console.log(`   Essay: ${typeCounts.essay} (${typeCounts.essay * POINTS.essay} pts)`);
+    console.log(`   Total Points: ${totalPoints}`);
+
     const stats = {
       total_generated: trimmedQuestions.length,
+      total_points: totalPoints,
       slots_created: allSlots.length,
       from_bank: bankFilled.length,
       ai_generated: aiFilled.filter(s => s.filled).length,
-      unfilled: allSlots.length - filledCount,
+      unfilled: allSlots.length - filledById.size,
+      by_question_type: typeCounts,
       by_bloom: trimmedQuestions.reduce((acc: Record<string, number>, q: any) => {
         const level = q.bloom_level?.toLowerCase() || 'unknown';
         acc[level] = (acc[level] || 0) + 1;
@@ -740,19 +1154,10 @@ serve(async (req) => {
         acc[q.topic] = (acc[q.topic] || 0) + 1;
         return acc;
       }, {}),
-      needs_review: trimmedQuestions.filter((q: any) => q.needs_review).length,
-      registry_summary: {
-        concepts_used: Object.values(registry.usedConcepts).flat().length,
-        operations_used: Object.values(registry.usedOperations).flat().length,
-        pairs_used: registry.usedPairs.length
-      }
+      needs_review: trimmedQuestions.filter((q: any) => q.needs_review).length
     };
 
     console.log(`\n✅ === GENERATION COMPLETE ===`);
-    console.log(`📊 Total: ${stats.total_generated} questions`);
-    console.log(`📚 From Bank: ${stats.from_bank}`);
-    console.log(`🤖 AI Generated: ${stats.ai_generated}`);
-    console.log(`⚠️ Unfilled: ${stats.unfilled}`);
 
     return new Response(JSON.stringify({
       success: true,
@@ -764,6 +1169,8 @@ serve(async (req) => {
           topic: s.topic,
           bloom: s.bloomLevel,
           difficulty: s.difficulty,
+          question_type: s.questionType,
+          points: s.points,
           filled: filled?.filled ?? false,
           source: filled?.source || 'unfilled'
         };
