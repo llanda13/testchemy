@@ -42,8 +42,8 @@ interface Slot {
   bloomLevel: string;
   difficulty: string;
   knowledgeDimension: string;
-  questionType: 'mcq' | 'true_false' | 'essay';  // NEW: Question type assignment
-  points: number;  // NEW: Point value
+  questionType: 'mcq' | 'true_false' | 'short_answer' | 'essay';  // Question type assignment
+  points: number;  // Point value
   filled: boolean;
   question?: any;
   source?: 'bank' | 'ai';
@@ -102,8 +102,14 @@ const ANSWER_TYPE_BY_BLOOM: Record<string, string[]> = {
 const POINTS = {
   mcq: 1,
   true_false: 1,
+  short_answer: 1,
   essay: 5
 };
+
+// Randomly choose either True/False OR Short Answer for each exam (mutually exclusive)
+function chooseSecondaryQuestionType(): 'true_false' | 'short_answer' {
+  return Math.random() < 0.5 ? 'true_false' : 'short_answer';
+}
 
 // ============= SUPABASE CLIENT =============
 
@@ -117,34 +123,78 @@ const supabase = createClient(
 /**
  * Calculate how many of each question type to generate
  * Rules:
- * - Essay: 5 points each, max 1 for ≤50 items, max 2 for ≤100 items
- * - True/False: 1 point, ~15-20% of remaining items
- * - MCQ: 1 point, majority (remaining items)
+ * - Essay: 5 points each, calculated based on total points target
+ *   - For 46-50 total points: 1 essay (5 points)
+ *   - For 100+ total items: max 2 essays (10 points)
+ * - True/False OR Short Answer: 1 point each, ~15-20% of remaining items (MUTUALLY EXCLUSIVE)
+ * - MCQ: 1 point each, majority (remaining items)
+ * 
+ * Point calculation example:
+ * - 50 questions total → target ~50 points
+ * - 1 essay (5 pts) + 49 MCQ/TF (49 pts) = 54 total points
  */
-function calculateQuestionTypeDistribution(totalItems: number): { mcq: number; true_false: number; essay: number } {
-  // Essay allocation (high value, limited count)
+interface QuestionTypeDistribution {
+  mcq: number;
+  true_false: number;
+  short_answer: number;
+  essay: number;
+  secondaryType: 'true_false' | 'short_answer';
+  totalPoints: number;
+}
+
+function calculateQuestionTypeDistribution(totalItems: number): QuestionTypeDistribution {
+  // Essay allocation based on total items and point balance
+  // Rule: Essay questions should not dominate the total points
+  // Essay = 5 pts, so max essays = floor((totalItems * 0.10) / 5) = ~10% of total points from essays
+  
   let essayCount = 0;
-  if (totalItems >= 30) {
+  
+  // For very small exams (< 20 items), no essay
+  if (totalItems < 20) {
+    essayCount = 0;
+  }
+  // For 20-59 items: 1 essay max
+  else if (totalItems < 60) {
     essayCount = 1;
   }
-  if (totalItems >= 80) {
+  // For 60-99 items: 1 essay, could be 2
+  else if (totalItems < 100) {
+    essayCount = 1;
+  }
+  // For 100+ items: 2 essays max
+  else {
     essayCount = 2;
   }
   
   const remainingAfterEssay = totalItems - essayCount;
   
-  // True/False: ~15-20% of remaining, minimum 0
-  const trueFalseCount = Math.max(0, Math.floor(remainingAfterEssay * 0.15));
+  // Choose either True/False OR Short Answer (mutually exclusive per exam)
+  const secondaryType = chooseSecondaryQuestionType();
   
-  // MCQ: Everything else
-  const mcqCount = remainingAfterEssay - trueFalseCount;
+  // Secondary type (T/F or Short Answer): ~15-20% of remaining, minimum 0
+  const secondaryCount = Math.max(0, Math.floor(remainingAfterEssay * 0.18));
   
-  console.log(`📊 Question type distribution for ${totalItems} items: MCQ=${mcqCount}, T/F=${trueFalseCount}, Essay=${essayCount}`);
+  // MCQ: Everything else (majority)
+  const mcqCount = remainingAfterEssay - secondaryCount;
+  
+  // Calculate total points
+  const totalPoints = (mcqCount * POINTS.mcq) + 
+                      (secondaryCount * (secondaryType === 'true_false' ? POINTS.true_false : POINTS.short_answer)) + 
+                      (essayCount * POINTS.essay);
+  
+  console.log(`📊 Question type distribution for ${totalItems} items:`);
+  console.log(`   MCQ: ${mcqCount} (${mcqCount * POINTS.mcq} pts)`);
+  console.log(`   ${secondaryType === 'true_false' ? 'T/F' : 'Short Answer'}: ${secondaryCount} (${secondaryCount} pts)`);
+  console.log(`   Essay: ${essayCount} (${essayCount * POINTS.essay} pts)`);
+  console.log(`   Total Points: ${totalPoints}`);
   
   return {
     mcq: mcqCount,
-    true_false: trueFalseCount,
-    essay: essayCount
+    true_false: secondaryType === 'true_false' ? secondaryCount : 0,
+    short_answer: secondaryType === 'short_answer' ? secondaryCount : 0,
+    essay: essayCount,
+    secondaryType,
+    totalPoints
   };
 }
 
@@ -162,7 +212,9 @@ function expandTOSToSlots(distributions: TopicDistribution[], totalItems: number
   
   // Track how many of each type we've assigned
   let assignedEssay = 0;
-  let assignedTF = 0;
+  let assignedSecondary = 0; // Either T/F or Short Answer (mutually exclusive)
+  const secondaryType = typeDistribution.secondaryType; // 'true_false' or 'short_answer'
+  const secondaryCount = secondaryType === 'true_false' ? typeDistribution.true_false : typeDistribution.short_answer;
 
   for (const dist of distributions) {
     const topic = dist.topic;
@@ -190,7 +242,7 @@ function expandTOSToSlots(distributions: TopicDistribution[], totalItems: number
           const knowledgeDimension = BLOOM_KNOWLEDGE_MAPPING[bloom] || 'conceptual';
           
           // Assign question type based on bloom level and remaining quotas
-          let questionType: 'mcq' | 'true_false' | 'essay' = 'mcq';
+          let questionType: 'mcq' | 'true_false' | 'short_answer' | 'essay' = 'mcq';
           let points = POINTS.mcq;
           
           // Essay: Only for higher-order blooms (evaluating, creating) and difficult
@@ -201,13 +253,24 @@ function expandTOSToSlots(distributions: TopicDistribution[], totalItems: number
             points = POINTS.essay;
             assignedEssay++;
           }
-          // True/False: Good for remembering/understanding, easy/average difficulty
-          else if (assignedTF < typeDistribution.true_false && 
-                   (bloom === 'remembering' || bloom === 'understanding') && 
-                   (level === 'easy' || level === 'average')) {
-            questionType = 'true_false';
-            points = POINTS.true_false;
-            assignedTF++;
+          // Secondary type (either T/F OR Short Answer - mutually exclusive per exam)
+          else if (assignedSecondary < secondaryCount) {
+            // True/False: Good for remembering/understanding, easy/average difficulty
+            if (secondaryType === 'true_false' && 
+                (bloom === 'remembering' || bloom === 'understanding') && 
+                (level === 'easy' || level === 'average')) {
+              questionType = 'true_false';
+              points = POINTS.true_false;
+              assignedSecondary++;
+            }
+            // Short Answer: Good for applying/analyzing, average difficulty
+            else if (secondaryType === 'short_answer' && 
+                     (bloom === 'applying' || bloom === 'understanding' || bloom === 'analyzing') && 
+                     (level === 'average' || level === 'easy')) {
+              questionType = 'short_answer';
+              points = POINTS.short_answer;
+              assignedSecondary++;
+            }
           }
           // MCQ: Default for everything else
           
@@ -242,28 +305,34 @@ function expandTOSToSlots(distributions: TopicDistribution[], totalItems: number
     }
   }
 
-  // If we haven't filled T/F quota, convert some easy MCQs
-  if (assignedTF < typeDistribution.true_false) {
-    const easyMCQs = slots.filter(s => 
+  // If we haven't filled secondary quota, convert some easy/average MCQs
+  if (assignedSecondary < secondaryCount) {
+    const eligibleMCQs = slots.filter(s => 
       s.questionType === 'mcq' && 
       (s.difficulty === 'easy' || s.difficulty === 'average')
     );
     
-    for (const slot of easyMCQs) {
-      if (assignedTF >= typeDistribution.true_false) break;
-      slot.questionType = 'true_false';
-      slot.points = POINTS.true_false;
-      assignedTF++;
+    for (const slot of eligibleMCQs) {
+      if (assignedSecondary >= secondaryCount) break;
+      slot.questionType = secondaryType;
+      slot.points = secondaryType === 'true_false' ? POINTS.true_false : POINTS.short_answer;
+      assignedSecondary++;
     }
   }
 
   const typeCounts = {
     mcq: slots.filter(s => s.questionType === 'mcq').length,
     true_false: slots.filter(s => s.questionType === 'true_false').length,
+    short_answer: slots.filter(s => s.questionType === 'short_answer').length,
     essay: slots.filter(s => s.questionType === 'essay').length
   };
   
-  console.log(`📋 Expanded TOS into ${slots.length} slots: MCQ=${typeCounts.mcq}, T/F=${typeCounts.true_false}, Essay=${typeCounts.essay}`);
+  console.log(`📋 Expanded TOS into ${slots.length} slots:`);
+  console.log(`   MCQ: ${typeCounts.mcq}`);
+  console.log(`   ${secondaryType === 'true_false' ? 'T/F' : 'Short Answer'}: ${secondaryType === 'true_false' ? typeCounts.true_false : typeCounts.short_answer}`);
+  console.log(`   Essay: ${typeCounts.essay}`);
+  console.log(`   (Note: Only ${secondaryType === 'true_false' ? 'True/False' : 'Short Answer'} used - mutually exclusive)`);
+  
   return slots;
 }
 
@@ -568,6 +637,14 @@ function validateQuestion(question: any, questionType: string): boolean {
     }
   }
 
+  if (questionType === 'short_answer') {
+    // ENFORCE: Must have a correct_answer or model answer
+    if (!question.correct_answer && !question.answer) {
+      console.warn('Short answer missing correct_answer');
+      return false;
+    }
+  }
+
   if (questionType === 'essay') {
     // Essay should have rubric or model answer
     if (!question.answer && !question.rubric) {
@@ -641,6 +718,7 @@ async function generateQuestionsWithIntents(
   // Group by question type for appropriate prompts
   const mcqIntents = intents.filter(i => i.questionType === 'mcq');
   const tfIntents = intents.filter(i => i.questionType === 'true_false');
+  const shortAnswerIntents = intents.filter(i => i.questionType === 'short_answer');
   const essayIntents = intents.filter(i => i.questionType === 'essay');
 
   const allQuestions: any[] = [];
@@ -655,6 +733,12 @@ async function generateQuestionsWithIntents(
   if (tfIntents.length > 0) {
     const tfQuestions = await generateTrueFalseQuestions(topic, normalizedBloom, tfIntents, apiKey, registry);
     allQuestions.push(...tfQuestions);
+  }
+
+  // Generate Short Answer / Fill in the Blank questions
+  if (shortAnswerIntents.length > 0) {
+    const shortAnswerQuestions = await generateShortAnswerQuestions(topic, normalizedBloom, shortAnswerIntents, apiKey, registry);
+    allQuestions.push(...shortAnswerQuestions);
   }
 
   // Generate Essay questions
@@ -932,6 +1016,123 @@ Return ONLY valid JSON:
 }
 
 /**
+ * Generate Short Answer / Fill in the Blank questions
+ */
+async function generateShortAnswerQuestions(
+  topic: string,
+  bloom: string,
+  intents: any[],
+  apiKey: string,
+  registry: GenerationRegistry
+): Promise<any[]> {
+  const questionsSpec = intents.map((intent, idx) => `
+Question ${idx + 1}:
+  CONCEPT: "${intent.concept}"
+  OPERATION: "${intent.operation}"
+  DIFFICULTY: "${intent.difficulty}"
+`).join('\n');
+
+  const prompt = `Generate ${intents.length} DISTINCT Short Answer / Fill in the Blank questions.
+
+TOPIC: ${topic}
+BLOOM'S LEVEL: ${bloom}
+
+=== QUESTION SPECIFICATIONS ===
+${questionsSpec}
+
+=== SHORT ANSWER FORMAT ===
+1. Question should require a brief, specific answer (1-3 words or a short phrase)
+2. Include a clear blank or question requiring a specific term/concept
+3. Answer should be unambiguous and verifiable
+4. Test understanding of key terms, definitions, or concepts
+5. Avoid questions with multiple correct answers
+
+=== EXAMPLE FORMATS ===
+- "The process by which plants convert sunlight to energy is called ________."
+- "What is the name of the smallest unit of life?"
+- "In programming, a ________ stores a value that can change during execution."
+
+Return ONLY valid JSON:
+{
+  "questions": [
+    {
+      "text": "The ________ is the central concept in ${topic}.",
+      "correct_answer": "specific term or phrase",
+      "acceptable_answers": ["term", "alternative phrasing"],
+      "explanation": "Why this is the correct answer"
+    }
+  ]
+}`;
+
+  console.log(`🤖 Generating ${intents.length} Short Answer questions for ${topic}/${bloom}`);
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You are an expert educational assessment designer. Generate clear Short Answer / Fill in the Blank questions that have unambiguous, specific answers. Include acceptable alternative phrasings when appropriate.`
+        },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.3,
+      max_tokens: 2000
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.error('OpenAI API error for Short Answer:', error);
+    throw new Error('Failed to generate Short Answer questions');
+  }
+
+  const aiResponse = await response.json();
+  
+  let generatedQuestions;
+  try {
+    const content = aiResponse.choices[0].message.content;
+    generatedQuestions = JSON.parse(content);
+  } catch (parseError) {
+    console.error('Failed to parse Short Answer response:', parseError);
+    throw new Error('Invalid Short Answer response format');
+  }
+
+  return (generatedQuestions.questions || []).map((q: any, idx: number) => {
+    const intent = intents[idx];
+    
+    return {
+      id: crypto.randomUUID(),
+      question_text: q.text,
+      question_type: 'short_answer',
+      correct_answer: q.correct_answer,
+      acceptable_answers: q.acceptable_answers || [q.correct_answer],
+      explanation: q.explanation,
+      topic: topic,
+      bloom_level: bloom,
+      difficulty: intent?.difficulty || 'average',
+      knowledge_dimension: intent?.knowledgeDimension || 'factual',
+      points: POINTS.short_answer,
+      created_by: 'ai',
+      approved: false,
+      ai_confidence_score: 0.85,
+      needs_review: true,
+      metadata: {
+        generated_by: 'intent_driven_pipeline',
+        pipeline_version: '2.1',
+        question_type: 'short_answer'
+      }
+    };
+  }).filter((q: any) => q.question_text && q.question_text.length > 10);
+}
+
+/**
  * Generate Essay questions (limited count, high value)
  */
 async function generateEssayQuestions(
@@ -1122,16 +1323,28 @@ serve(async (req) => {
     const typeCounts = {
       mcq: trimmedQuestions.filter(q => q.question_type === 'mcq').length,
       true_false: trimmedQuestions.filter(q => q.question_type === 'true_false').length,
+      short_answer: trimmedQuestions.filter(q => q.question_type === 'short_answer').length,
       essay: trimmedQuestions.filter(q => q.question_type === 'essay').length
     };
     
     const totalPoints = trimmedQuestions.reduce((sum, q) => sum + (q.points || 1), 0);
+    
+    // Determine which secondary type was used
+    const secondaryTypeUsed = typeCounts.true_false > 0 ? 'true_false' : 
+                              typeCounts.short_answer > 0 ? 'short_answer' : 'none';
 
     console.log(`📊 Final assembly: ${trimmedQuestions.length} questions`);
     console.log(`   MCQ: ${typeCounts.mcq} (${typeCounts.mcq * POINTS.mcq} pts)`);
-    console.log(`   T/F: ${typeCounts.true_false} (${typeCounts.true_false * POINTS.true_false} pts)`);
+    if (typeCounts.true_false > 0) {
+      console.log(`   T/F: ${typeCounts.true_false} (${typeCounts.true_false * POINTS.true_false} pts)`);
+    }
+    if (typeCounts.short_answer > 0) {
+      console.log(`   Short Answer: ${typeCounts.short_answer} (${typeCounts.short_answer * POINTS.short_answer} pts)`);
+    }
     console.log(`   Essay: ${typeCounts.essay} (${typeCounts.essay * POINTS.essay} pts)`);
     console.log(`   Total Points: ${totalPoints}`);
+    console.log(`   (Note: Secondary type used: ${secondaryTypeUsed === 'true_false' ? 'True/False' : secondaryTypeUsed === 'short_answer' ? 'Short Answer' : 'None'})`);
+
 
     const stats = {
       total_generated: trimmedQuestions.length,
