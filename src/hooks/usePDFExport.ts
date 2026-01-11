@@ -8,8 +8,15 @@ import { addWatermarkToPDF, generateWatermarkCode, logSecurityEvent } from '@/se
 export const usePDFExport = () => {
   const uploadToStorage = useCallback(async (blob: Blob, filename: string, folder: string) => {
     try {
+      // Get current user for owner-based storage path
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User must be authenticated to upload files');
+      }
+
       const timestamp = new Date().toISOString().slice(0, 10);
-      const path = `${folder}/${timestamp}/${filename}`;
+      // Use user ID as first folder segment for owner-based RLS
+      const path = `${user.id}/${folder}/${timestamp}/${filename}`;
 
       const { error: uploadError } = await supabase.storage
         .from('exports')
@@ -20,12 +27,15 @@ export const usePDFExport = () => {
 
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage
+      // Use signed URL instead of public URL for secure access
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
         .from('exports')
-        .getPublicUrl(path);
+        .createSignedUrl(path, 3600); // 1 hour expiry
+
+      if (signedUrlError) throw signedUrlError;
 
       return {
-        storageUrl: urlData.publicUrl,
+        storageUrl: signedUrlData.signedUrl,
         storagePath: path
       };
     } catch (error) {
