@@ -751,7 +751,51 @@ async function generateQuestionsWithIntents(
 }
 
 /**
- * Generate MCQ questions with ENFORCED A, B, C, D options
+ * Shuffle an array using Fisher-Yates algorithm
+ */
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+/**
+ * Randomize correct answer position for MCQ
+ * Takes the correct answer and distractors, shuffles them, returns choices object and correct answer letter
+ */
+function randomizeAnswerPosition(correctText: string, distractors: string[]): { choices: Record<string, string>; correctAnswer: string } {
+  const allOptions = [
+    { text: correctText, isCorrect: true },
+    ...distractors.slice(0, 3).map(d => ({ text: d, isCorrect: false }))
+  ];
+  
+  // Ensure we have exactly 4 options
+  while (allOptions.length < 4) {
+    allOptions.push({ text: `Additional option ${allOptions.length + 1}`, isCorrect: false });
+  }
+  
+  // Shuffle the options
+  const shuffled = shuffleArray(allOptions);
+  
+  const letters = ['A', 'B', 'C', 'D'];
+  const choices: Record<string, string> = {};
+  let correctAnswer = 'A';
+  
+  shuffled.forEach((opt, idx) => {
+    choices[letters[idx]] = opt.text;
+    if (opt.isCorrect) {
+      correctAnswer = letters[idx];
+    }
+  });
+  
+  return { choices, correctAnswer };
+}
+
+/**
+ * Generate MCQ questions with ENFORCED A, B, C, D options and RANDOMIZED correct answer position
  */
 async function generateMCQQuestions(
   topic: string,
@@ -762,55 +806,103 @@ async function generateMCQQuestions(
 ): Promise<any[]> {
   const questionsSpec = intents.map((intent, idx) => `
 Question ${idx + 1}:
-  ASSIGNED CONCEPT: "${intent.concept}"
-  REQUIRED OPERATION: "${intent.operation}"
+  FOCUS CONCEPT: "${intent.concept}"
+  COGNITIVE OPERATION: "${intent.operation}" (Bloom's ${bloom} level)
   DIFFICULTY: "${intent.difficulty}"
+  
+  Generate a question that requires students to ${intent.operation} about ${intent.concept} in the context of ${topic}.
 `).join('\n');
 
   const usedTexts = registry.usedQuestionTexts.slice(-10).map(t => t.substring(0, 100));
   
-  const prompt = `Generate ${intents.length} DISTINCT Multiple Choice Questions (MCQs).
+  // Create bloom-specific examples
+  const bloomExamples: Record<string, string> = {
+    'Remembering': `Example: "Which of the following is a characteristic of ${topic}?" with specific factual options`,
+    'Understanding': `Example: "What is the main purpose of ${topic}?" with options explaining different aspects`,
+    'Applying': `Example: "In a scenario where..., which ${topic} approach would you use?" with practical application options`,
+    'Analyzing': `Example: "What is the relationship between X and Y in ${topic}?" with analytical comparison options`,
+    'Evaluating': `Example: "Which approach to ${topic} would be most effective for...?" with options requiring judgment`,
+    'Creating': `Example: "If you were designing a solution using ${topic}, which approach would best...?" with design-oriented options`
+  };
+  
+  const prompt = `Generate ${intents.length} PROFESSIONAL Multiple Choice Questions for an academic examination.
 
-🚨 CRITICAL MCQ FORMAT REQUIREMENTS - MUST BE FOLLOWED EXACTLY 🚨
+🚨 CRITICAL: GENERATE COMPLETE, SPECIFIC, REALISTIC CONTENT - NO PLACEHOLDERS 🚨
 
 TOPIC: ${topic}
-BLOOM'S LEVEL: ${bloom}
+BLOOM'S TAXONOMY LEVEL: ${bloom}
 
-=== ALREADY USED (DO NOT REPEAT) ===
-${usedTexts.length > 0 ? usedTexts.map((t, i) => `${i + 1}. "${t}..."`).join('\n') : 'None yet'}
+${bloomExamples[bloom] || ''}
 
-=== QUESTION SPECIFICATIONS ===
+=== PREVIOUSLY USED QUESTIONS (AVOID SIMILAR) ===
+${usedTexts.length > 0 ? usedTexts.map((t, i) => `${i + 1}. "${t}..."`).join('\n') : 'None yet - generate fresh questions'}
+
+=== QUESTION REQUIREMENTS ===
 ${questionsSpec}
 
-=== MCQ FORMAT - STRICTLY ENFORCED ===
-Each MCQ MUST have:
-1. A clear question stem
-2. EXACTLY 4 options labeled A, B, C, D
-3. Each option MUST be a complete, substantive answer (not blank)
-4. ONE correct answer (A, B, C, or D)
-5. Three plausible distractors that test understanding
-6. Distractors should be related to the topic but incorrect
-7. correct_answer must be RANDOMIZED (not always "A")
+=== ABSOLUTE REQUIREMENTS - VIOLATIONS WILL BE REJECTED ===
 
-=== DISTRACTOR QUALITY RULES ===
-- Distractors must be plausible (could fool someone with partial knowledge)
-- Distractors must be clearly wrong to someone who knows the material
-- Distractors should not be obviously absurd
-- Each option should be similar in length and complexity
+1. QUESTION STEMS:
+   - Must be specific, complete sentences asking about ACTUAL concepts
+   - NO generic stems like "What is the definition of X?" unless appropriate for remembering level
+   - For higher Bloom's levels (Applying, Analyzing, Evaluating, Creating): Use scenarios, case studies, or problem situations
+   - Each question must be UNIQUE - different focus than others in this batch
 
-Return ONLY valid JSON:
+2. ANSWER OPTIONS (A, B, C, D):
+   - MUST BE ACTUAL SUBSTANTIVE CONTENT - real terms, real concepts, real descriptions
+   - ABSOLUTELY NO placeholder text like:
+     * "Correct answer related to..."
+     * "Plausible distractor about..."
+     * "Another distractor for..."
+     * "Option X for [topic]"
+   - Each option must be a complete, meaningful response that could appear on a real exam
+   - Options should be similar in length and grammatical structure
+   - All options must be plausible to someone with partial knowledge
+
+3. CORRECT ANSWER:
+   - One option must be clearly correct
+   - Provide substantive explanation for why it's correct
+
+4. DISTRACTORS (Wrong options):
+   - Must represent common misconceptions or partial understanding
+   - Must be plausible but clearly wrong to someone who knows the material
+   - Should test understanding, not trick students with wordplay
+
+=== EXAMPLE OF GOOD MCQ ===
+{
+  "text": "In requirements engineering, what is the primary purpose of requirement validation?",
+  "correct_option": "To ensure requirements accurately reflect stakeholder needs and are feasible to implement",
+  "distractors": [
+    "To convert requirements into programming code",
+    "To assign requirements to specific development team members", 
+    "To estimate the cost of implementing each requirement"
+  ],
+  "explanation": "Validation confirms requirements are correct, complete, and implementable before development begins."
+}
+
+=== EXAMPLE OF BAD MCQ (DO NOT DO THIS) ===
+{
+  "text": "What is the concept of ${topic}?",
+  "choices": {
+    "A": "Correct answer related to ${topic}",
+    "B": "Plausible distractor about ${topic}",
+    "C": "Another distractor for ${topic}",
+    "D": "Final option regarding ${topic}"
+  }
+}
+
+Return ONLY valid JSON with this structure:
 {
   "questions": [
     {
-      "text": "Question stem about ${topic}?",
-      "choices": {
-        "A": "First option text (complete sentence or phrase)",
-        "B": "Second option text (complete sentence or phrase)",
-        "C": "Third option text (complete sentence or phrase)",
-        "D": "Fourth option text (complete sentence or phrase)"
-      },
-      "correct_answer": "B",
-      "explanation": "Why B is correct and others are wrong"
+      "text": "[Complete, specific question about the topic]",
+      "correct_option": "[The actual correct answer text]",
+      "distractors": [
+        "[First wrong but plausible option]",
+        "[Second wrong but plausible option]",
+        "[Third wrong but plausible option]"
+      ],
+      "explanation": "[Why the correct option is right]"
     }
   ]
 }`;
@@ -828,13 +920,21 @@ Return ONLY valid JSON:
       messages: [
         {
           role: 'system',
-          content: `You are an expert educational assessment designer. Generate high-quality Multiple Choice Questions with EXACTLY 4 options (A, B, C, D). Each option must be substantive and plausible. The correct answer should be randomized - not always "A". Never generate questions with blank or placeholder options.`
+          content: `You are an expert educational assessment designer creating questions for university-level examinations. 
+
+CRITICAL RULES:
+1. Generate COMPLETE, SPECIFIC content - never use placeholders or generic text
+2. Each answer option must be a real, substantive response (not "Correct answer about X" or "Distractor for X")
+3. Questions must test actual knowledge, not just pattern recognition
+4. For higher Bloom's levels, use scenarios and application-based questions
+5. All options should be plausible to someone with partial knowledge
+6. Return the correct answer separately from distractors so they can be randomized`
         },
         { role: 'user', content: prompt }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.4,
-      max_tokens: 3000
+      temperature: 0.6,
+      max_tokens: 4000
     }),
   });
 
@@ -858,20 +958,42 @@ Return ONLY valid JSON:
   return (generatedQuestions.questions || []).map((q: any, idx: number) => {
     const intent = intents[idx];
     
-    // Validate and fix choices if needed
-    let choices = q.choices || {};
-    let correctAnswer = q.correct_answer || 'A';
+    // Check for placeholder content and reject
+    const placeholderPatterns = [
+      /correct answer (related to|about|for)/i,
+      /plausible distractor/i,
+      /another distractor/i,
+      /final option (regarding|about|for)/i,
+      /option [a-d] for/i,
+      /first option text/i,
+      /second option text/i,
+      /third option text/i,
+      /fourth option text/i
+    ];
     
-    // Ensure all 4 options exist
-    ['A', 'B', 'C', 'D'].forEach(key => {
-      if (!choices[key] || typeof choices[key] !== 'string' || choices[key].trim().length === 0) {
-        choices[key] = `Option ${key} for ${topic}`;
-      }
-    });
+    const correctOption = q.correct_option || q.correct_answer || '';
+    const distractors = q.distractors || [];
     
-    // Ensure correct_answer is valid
-    if (!['A', 'B', 'C', 'D'].includes(correctAnswer)) {
-      correctAnswer = 'A';
+    // Check if any content is placeholder
+    const allContent = [correctOption, ...distractors].join(' ');
+    const hasPlaceholder = placeholderPatterns.some(pattern => pattern.test(allContent));
+    
+    if (hasPlaceholder) {
+      console.warn(`⚠️ Rejected MCQ with placeholder content: ${q.text?.substring(0, 50)}...`);
+      return null;
+    }
+    
+    // Randomize the answer position
+    const { choices, correctAnswer } = randomizeAnswerPosition(correctOption, distractors);
+    
+    // Validate choices are substantive
+    const hasSubstantiveChoices = Object.values(choices).every(
+      (c: string) => c && c.length > 5 && !placeholderPatterns.some(p => p.test(c))
+    );
+    
+    if (!hasSubstantiveChoices) {
+      console.warn(`⚠️ Rejected MCQ with non-substantive choices: ${q.text?.substring(0, 50)}...`);
+      return null;
     }
     
     return {
@@ -892,11 +1014,12 @@ Return ONLY valid JSON:
       needs_review: true,
       metadata: {
         generated_by: 'intent_driven_pipeline',
-        pipeline_version: '2.1',
-        question_type: 'mcq'
+        pipeline_version: '2.2',
+        question_type: 'mcq',
+        answer_randomized: true
       }
     };
-  }).filter((q: any) => q.question_text && q.question_text.length > 10);
+  }).filter((q: any) => q !== null && q.question_text && q.question_text.length > 10);
 }
 
 /**
