@@ -16,7 +16,7 @@ interface TestItem {
   question?: string;
   question_type?: string;
   type?: string;
-  choices?: string[];
+  choices?: Record<string, string> | string[];
   options?: string[];
   correct_answer?: string | number;
   correctAnswer?: string | number;
@@ -28,37 +28,53 @@ interface TestItem {
 
 interface GroupedQuestions {
   mcq: TestItem[];
-  true_false: TestItem[];
-  short_answer: TestItem[];
+  secondary: TestItem[]; // Either T/F OR Short Answer (mutually exclusive)
   essay: TestItem[];
-  other: TestItem[];
+  secondaryType: 'true_false' | 'short_answer' | null;
 }
 
 function groupQuestionsByType(items: TestItem[]): GroupedQuestions {
-  const groups: GroupedQuestions = {
-    mcq: [],
-    true_false: [],
-    short_answer: [],
-    essay: [],
-    other: []
-  };
+  const mcq: TestItem[] = [];
+  const trueFalse: TestItem[] = [];
+  const shortAnswer: TestItem[] = [];
+  const essay: TestItem[] = [];
 
   for (const item of items) {
     const type = (item.question_type || item.type || '').toLowerCase();
     if (type === 'mcq' || type === 'multiple-choice' || type === 'multiple_choice') {
-      groups.mcq.push(item);
+      mcq.push(item);
     } else if (type === 'true_false' || type === 'true-false' || type === 'truefalse') {
-      groups.true_false.push(item);
+      trueFalse.push(item);
     } else if (type === 'short_answer' || type === 'fill-blank' || type === 'fill_blank' || type === 'identification') {
-      groups.short_answer.push(item);
+      shortAnswer.push(item);
     } else if (type === 'essay') {
-      groups.essay.push(item);
-    } else {
-      groups.other.push(item);
+      essay.push(item);
     }
   }
 
-  return groups;
+  // Determine which secondary type to use (only one should have items - mutually exclusive)
+  // If both somehow have items, prefer the one with more questions
+  let secondaryType: 'true_false' | 'short_answer' | null = null;
+  let secondary: TestItem[] = [];
+  
+  if (trueFalse.length > 0 && shortAnswer.length === 0) {
+    secondaryType = 'true_false';
+    secondary = trueFalse;
+  } else if (shortAnswer.length > 0 && trueFalse.length === 0) {
+    secondaryType = 'short_answer';
+    secondary = shortAnswer;
+  } else if (trueFalse.length > 0 && shortAnswer.length > 0) {
+    // Edge case: both have items, pick the one with more
+    if (trueFalse.length >= shortAnswer.length) {
+      secondaryType = 'true_false';
+      secondary = trueFalse;
+    } else {
+      secondaryType = 'short_answer';
+      secondary = shortAnswer;
+    }
+  }
+
+  return { mcq, secondary, essay, secondaryType };
 }
 
 export default function GeneratedTestPage() {
@@ -159,12 +175,25 @@ export default function GeneratedTestPage() {
   const totalPoints = items.reduce((sum, item) => sum + (item.points || 1), 0);
   const groupedQuestions = groupQuestionsByType(items);
 
-  // Calculate starting numbers for each section
+  // Calculate starting numbers for each section (only 3 sections: A, B, C)
   const mcqStart = 1;
-  const tfStart = mcqStart + groupedQuestions.mcq.length;
-  const saStart = tfStart + groupedQuestions.true_false.length;
-  const essayStart = saStart + groupedQuestions.short_answer.length;
-  const otherStart = essayStart + groupedQuestions.essay.length;
+  const secondaryStart = mcqStart + groupedQuestions.mcq.length;
+  const essayStart = secondaryStart + groupedQuestions.secondary.length;
+
+  // Determine Section B title and instruction based on secondary type
+  const getSectionBTitle = () => {
+    if (groupedQuestions.secondaryType === 'true_false') {
+      return "Section B: True or False";
+    }
+    return "Section B: Fill in the Blank / Short Answer";
+  };
+
+  const getSectionBInstruction = () => {
+    if (groupedQuestions.secondaryType === 'true_false') {
+      return "Write TRUE if the statement is correct, FALSE if incorrect.";
+    }
+    return "Write the correct answer on the blank provided.";
+  };
 
   return (
     <div className="container mx-auto py-8 space-y-6 print:py-4">
@@ -243,8 +272,9 @@ export default function GeneratedTestPage() {
 
           <Separator />
 
-          {/* Questions - Grouped by Type */}
+          {/* Questions - 3 Sections: A (MCQ), B (T/F or Short Answer), C (Essay) */}
           <div className="space-y-8">
+            {/* Section A: Multiple Choice Questions */}
             {groupedQuestions.mcq.length > 0 && (
               <QuestionSection
                 title="Section A: Multiple Choice Questions"
@@ -255,42 +285,24 @@ export default function GeneratedTestPage() {
               />
             )}
             
-            {groupedQuestions.true_false.length > 0 && (
+            {/* Section B: True/False OR Short Answer (mutually exclusive) */}
+            {groupedQuestions.secondary.length > 0 && (
               <QuestionSection
-                title="Section B: True or False"
-                instruction="Write TRUE if the statement is correct, FALSE if incorrect."
-                items={groupedQuestions.true_false}
-                startNumber={tfStart}
+                title={getSectionBTitle()}
+                instruction={getSectionBInstruction()}
+                items={groupedQuestions.secondary}
+                startNumber={secondaryStart}
                 showAnswer={showAnswerKey}
               />
             )}
             
-            {groupedQuestions.short_answer.length > 0 && (
-              <QuestionSection
-                title="Section C: Fill in the Blank / Short Answer"
-                instruction="Write the correct answer on the blank provided."
-                items={groupedQuestions.short_answer}
-                startNumber={saStart}
-                showAnswer={showAnswerKey}
-              />
-            )}
-            
+            {/* Section C: Essay Questions */}
             {groupedQuestions.essay.length > 0 && (
               <QuestionSection
-                title="Section D: Essay Questions"
+                title="Section C: Essay Questions"
                 instruction="Answer the following questions in complete sentences. Provide clear and concise explanations."
                 items={groupedQuestions.essay}
                 startNumber={essayStart}
-                showAnswer={showAnswerKey}
-              />
-            )}
-            
-            {groupedQuestions.other.length > 0 && (
-              <QuestionSection
-                title="Section E: Other Questions"
-                instruction="Answer the following questions."
-                items={groupedQuestions.other}
-                startNumber={otherStart}
                 showAnswer={showAnswerKey}
               />
             )}
@@ -312,17 +324,15 @@ export default function GeneratedTestPage() {
               {groupedQuestions.mcq.length > 0 && (
                 <AnswerKeySection title="Multiple Choice" items={groupedQuestions.mcq} startNumber={mcqStart} />
               )}
-              {groupedQuestions.true_false.length > 0 && (
-                <AnswerKeySection title="True/False" items={groupedQuestions.true_false} startNumber={tfStart} />
-              )}
-              {groupedQuestions.short_answer.length > 0 && (
-                <AnswerKeySection title="Short Answer" items={groupedQuestions.short_answer} startNumber={saStart} />
+              {groupedQuestions.secondary.length > 0 && (
+                <AnswerKeySection 
+                  title={groupedQuestions.secondaryType === 'true_false' ? 'True/False' : 'Short Answer'} 
+                  items={groupedQuestions.secondary} 
+                  startNumber={secondaryStart} 
+                />
               )}
               {groupedQuestions.essay.length > 0 && (
                 <AnswerKeySection title="Essay" items={groupedQuestions.essay} startNumber={essayStart} />
-              )}
-              {groupedQuestions.other.length > 0 && (
-                <AnswerKeySection title="Other" items={groupedQuestions.other} startNumber={otherStart} />
               )}
             </div>
           </CardContent>
@@ -399,8 +409,32 @@ function QuestionItem({ item, number, showAnswer }: { item: TestItem; number: nu
 
   const questionText = item.question_text || item.question || '';
   const questionType = (item.question_type || item.type || '').toLowerCase();
-  const options = item.choices || item.options || [];
   const correctAnswer = item.correct_answer ?? item.correctAnswer;
+  
+  // Handle MCQ choices - can be object {A, B, C, D} or array
+  const getMCQOptions = (): { key: string; text: string }[] => {
+    const choices = item.choices || item.options;
+    if (!choices) return [];
+    
+    // If it's an object with A, B, C, D keys
+    if (typeof choices === 'object' && !Array.isArray(choices)) {
+      return ['A', 'B', 'C', 'D']
+        .filter(key => choices[key])
+        .map(key => ({ key, text: choices[key] as string }));
+    }
+    
+    // If it's an array
+    if (Array.isArray(choices)) {
+      return choices.map((text, idx) => ({
+        key: String.fromCharCode(65 + idx),
+        text: String(text)
+      }));
+    }
+    
+    return [];
+  };
+
+  const mcqOptions = getMCQOptions();
 
   return (
     <div className="border rounded-lg p-4 space-y-3 print:break-inside-avoid">
@@ -428,15 +462,16 @@ function QuestionItem({ item, number, showAnswer }: { item: TestItem; number: nu
 
       {/* Question Content based on type */}
       <div className="ml-8">
-        {(questionType === "mcq" || questionType === "multiple-choice" || questionType === "multiple_choice") && Array.isArray(options) && options.length > 0 && (
+        {/* MCQ with A, B, C, D options */}
+        {(questionType === "mcq" || questionType === "multiple-choice" || questionType === "multiple_choice") && mcqOptions.length > 0 && (
           <div className="space-y-2">
-            {options.map((option, idx) => {
-              const isCorrect = correctAnswer === idx || 
-                correctAnswer === String.fromCharCode(65 + idx) || 
-                correctAnswer === String.fromCharCode(97 + idx);
+            {mcqOptions.map((option) => {
+              const isCorrect = 
+                correctAnswer === option.key || 
+                correctAnswer === option.key.toLowerCase();
               return (
                 <div
-                  key={idx}
+                  key={option.key}
                   className={`flex items-start gap-2 p-2 rounded ${
                     showAnswer && isCorrect
                       ? "bg-green-50 border border-green-300"
@@ -444,9 +479,9 @@ function QuestionItem({ item, number, showAnswer }: { item: TestItem; number: nu
                   }`}
                 >
                   <span className="font-medium min-w-[24px]">
-                    {String.fromCharCode(65 + idx)}.
+                    {option.key}.
                   </span>
-                  <span className="text-sm">{option}</span>
+                  <span className="text-sm">{option.text}</span>
                 </div>
               );
             })}
@@ -525,16 +560,26 @@ function formatAnswer(item: TestItem): string {
   const questionType = (item.question_type || item.type || '').toLowerCase();
   const correctAnswer = item.correct_answer ?? item.correctAnswer;
   
-  if ((questionType === "mcq" || questionType === "multiple-choice" || questionType === "multiple_choice") && typeof correctAnswer === "number") {
-    return String.fromCharCode(65 + correctAnswer);
+  // MCQ: correct_answer is A, B, C, or D (or 0-3 index)
+  if (questionType === "mcq" || questionType === "multiple-choice" || questionType === "multiple_choice") {
+    // If it's a letter, return it directly
+    if (typeof correctAnswer === 'string' && ['A', 'B', 'C', 'D', 'a', 'b', 'c', 'd'].includes(correctAnswer)) {
+      return correctAnswer.toUpperCase();
+    }
+    // If it's a number index, convert to letter
+    if (typeof correctAnswer === "number" && correctAnswer >= 0 && correctAnswer <= 3) {
+      return String.fromCharCode(65 + correctAnswer);
+    }
+    return String(correctAnswer || 'A');
   }
+  
   if (questionType === "true_false" || questionType === "true-false" || questionType === "truefalse") {
     const normalizedAnswer = String(correctAnswer).toLowerCase();
     if (normalizedAnswer === "true" || correctAnswer === 0) return "True";
     if (normalizedAnswer === "false" || correctAnswer === 1) return "False";
+    return String(correctAnswer);
   }
+  
   return String(correctAnswer || "N/A");
 }
-
-
 
