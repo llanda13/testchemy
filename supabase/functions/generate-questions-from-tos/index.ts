@@ -72,21 +72,76 @@ const BLOOM_KNOWLEDGE_MAPPING: Record<string, string> = {
   'creating': 'metacognitive'
 };
 
-const BLOOM_COGNITIVE_OPERATIONS: Record<string, string[]> = {
-  'remembering': ['recall', 'recognize', 'identify', 'list', 'name', 'define', 'state'],
-  'understanding': ['explain', 'summarize', 'interpret', 'classify', 'compare', 'describe', 'paraphrase'],
-  'applying': ['execute', 'implement', 'solve', 'use', 'demonstrate', 'apply', 'calculate'],
-  'analyzing': ['differentiate', 'organize', 'attribute', 'deconstruct', 'examine', 'contrast', 'distinguish'],
-  'evaluating': ['check', 'critique', 'judge', 'prioritize', 'justify', 'assess', 'defend', 'evaluate'],
-  'creating': ['generate', 'plan', 'produce', 'design', 'construct', 'formulate', 'compose', 'develop']
+/**
+ * BLOOM'S COGNITIVE OPERATIONS - These define REQUIRED mental actions, not labels
+ * Each operation MUST be demonstrated in the question stem and required for correct answering
+ */
+const BLOOM_COGNITIVE_OPERATIONS_ENHANCED: Record<string, { 
+  verbs: string[]; 
+  requirement: string; 
+  forbiddenPatterns: RegExp[];
+  questionTemplate: string;
+}> = {
+  'remembering': {
+    verbs: ['recall', 'recognize', 'identify', 'list', 'name', 'define', 'state'],
+    requirement: 'Student must retrieve specific information from memory',
+    forbiddenPatterns: [],
+    questionTemplate: 'Requires direct recall of facts, terms, or definitions'
+  },
+  'understanding': {
+    verbs: ['explain', 'summarize', 'interpret', 'classify', 'compare', 'describe', 'paraphrase'],
+    requirement: 'Student must demonstrate comprehension by explaining in own words',
+    forbiddenPatterns: [/^list\s/i, /^name\s/i, /^identify\s/i],
+    questionTemplate: 'Requires explanation of meaning, not just recall'
+  },
+  'applying': {
+    verbs: ['execute', 'implement', 'solve', 'use', 'demonstrate', 'apply', 'calculate'],
+    requirement: 'Student must USE knowledge to solve a NEW problem or scenario',
+    forbiddenPatterns: [/^define\s/i, /^list\s/i, /^what\s+is\s/i],
+    questionTemplate: 'Must include a specific scenario or problem to solve'
+  },
+  'analyzing': {
+    verbs: ['differentiate', 'organize', 'attribute', 'deconstruct', 'examine', 'contrast', 'distinguish'],
+    requirement: 'Student must BREAK DOWN information and identify RELATIONSHIPS between parts',
+    forbiddenPatterns: [/key\s+factors?\s+(are|include)/i, /such\s+as/i, /includes?:/i],
+    questionTemplate: 'Must require identifying components AND their interactions'
+  },
+  'evaluating': {
+    verbs: ['check', 'critique', 'judge', 'prioritize', 'justify', 'assess', 'defend', 'evaluate'],
+    requirement: 'Student must make JUDGMENTS with CRITERIA and provide JUSTIFICATION',
+    forbiddenPatterns: [/key\s+factors?\s+(are|include)/i, /such\s+as/i, /includes?:/i, /^describe\s/i],
+    questionTemplate: 'Must require a verdict (better/worse, effective/not) with reasoning'
+  },
+  'creating': {
+    verbs: ['generate', 'plan', 'produce', 'design', 'construct', 'formulate', 'compose', 'develop'],
+    requirement: 'Student must PRODUCE something NEW - a design, plan, or solution',
+    forbiddenPatterns: [/key\s+factors?\s+(are|include)/i, /such\s+as/i, /includes?:/i, /^explain\s/i, /^describe\s/i],
+    questionTemplate: 'Must require creating a tangible output, not just describing'
+  }
 };
 
+// Legacy format for backwards compatibility
+const BLOOM_COGNITIVE_OPERATIONS: Record<string, string[]> = {
+  'remembering': BLOOM_COGNITIVE_OPERATIONS_ENHANCED.remembering.verbs,
+  'understanding': BLOOM_COGNITIVE_OPERATIONS_ENHANCED.understanding.verbs,
+  'applying': BLOOM_COGNITIVE_OPERATIONS_ENHANCED.applying.verbs,
+  'analyzing': BLOOM_COGNITIVE_OPERATIONS_ENHANCED.analyzing.verbs,
+  'evaluating': BLOOM_COGNITIVE_OPERATIONS_ENHANCED.evaluating.verbs,
+  'creating': BLOOM_COGNITIVE_OPERATIONS_ENHANCED.creating.verbs
+};
+
+/**
+ * CONCEPT POOL - Specific focus areas, not generic labels
+ * These must be used as actual content targets, not filler
+ */
 const CONCEPT_POOL = [
   'core principles', 'key components', 'fundamental concepts', 'main processes',
   'critical factors', 'essential elements', 'primary functions', 'basic mechanisms',
   'important relationships', 'significant characteristics', 'defining features', 'crucial aspects',
   'major categories', 'fundamental distinctions', 'core applications', 'primary considerations',
-  'essential requirements', 'key differences', 'important limitations', 'critical constraints'
+  'essential requirements', 'key differences', 'important limitations', 'critical constraints',
+  'implementation strategies', 'operational procedures', 'design patterns', 'evaluation criteria',
+  'causal relationships', 'structural components', 'functional dependencies', 'integration points'
 ];
 
 const ANSWER_TYPE_BY_BLOOM: Record<string, string[]> = {
@@ -463,16 +518,45 @@ function registerQuestion(
   }
 }
 
+/**
+ * Calculate semantic text similarity using enhanced Jaccard with n-grams
+ */
 function calculateTextSimilarity(text1: string, text2: string): number {
-  const words1 = new Set(text1.split(/\s+/).filter(w => w.length > 3));
-  const words2 = new Set(text2.split(/\s+/).filter(w => w.length > 3));
+  const normalize = (t: string) => t.toLowerCase().replace(/[^\w\s]/g, '').trim();
+  const n1 = normalize(text1);
+  const n2 = normalize(text2);
+  
+  // Word-level similarity
+  const words1 = new Set(n1.split(/\s+/).filter(w => w.length > 3));
+  const words2 = new Set(n2.split(/\s+/).filter(w => w.length > 3));
   
   if (words1.size === 0 || words2.size === 0) return 0;
   
   let intersection = 0;
   words1.forEach(w => { if (words2.has(w)) intersection++; });
+  const wordSimilarity = intersection / Math.min(words1.size, words2.size);
   
-  return intersection / Math.min(words1.size, words2.size);
+  // Bigram similarity for better semantic matching
+  const getBigrams = (s: string) => {
+    const tokens = s.split(/\s+/).filter(w => w.length > 2);
+    const bigrams = new Set<string>();
+    for (let i = 0; i < tokens.length - 1; i++) {
+      bigrams.add(`${tokens[i]}_${tokens[i + 1]}`);
+    }
+    return bigrams;
+  };
+  
+  const bigrams1 = getBigrams(n1);
+  const bigrams2 = getBigrams(n2);
+  
+  if (bigrams1.size === 0 || bigrams2.size === 0) return wordSimilarity;
+  
+  let bigramIntersection = 0;
+  bigrams1.forEach(b => { if (bigrams2.has(b)) bigramIntersection++; });
+  const bigramSimilarity = bigramIntersection / Math.min(bigrams1.size, bigrams2.size);
+  
+  // Combined similarity (weighted)
+  return (wordSimilarity * 0.4) + (bigramSimilarity * 0.6);
 }
 
 function extractConcept(text: string): string | null {
@@ -490,6 +574,105 @@ function extractConcept(text: string): string | null {
   }
   
   return null;
+}
+
+/**
+ * NORMALIZATION: Clean question text by removing artifacts
+ */
+function normalizeQuestionText(text: string): string {
+  if (!text) return '';
+  
+  let normalized = text;
+  
+  // Remove "(Question X)" artifacts
+  normalized = normalized.replace(/^\s*\(Question\s+\d+\)\s*/i, '');
+  normalized = normalized.replace(/^\s*Question\s+\d+[:.]\s*/i, '');
+  normalized = normalized.replace(/^\s*Q\d+[:.]\s*/i, '');
+  
+  // Remove number prefixes like "1.", "1)", "1:"
+  normalized = normalized.replace(/^\s*\d+[.):\s]+/i, '');
+  
+  // Remove leading/trailing whitespace
+  normalized = normalized.trim();
+  
+  // Ensure question ends with proper punctuation
+  if (normalized && !/[.?!]$/.test(normalized)) {
+    normalized += '?';
+  }
+  
+  // Capitalize first letter
+  if (normalized.length > 0) {
+    normalized = normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  }
+  
+  return normalized;
+}
+
+/**
+ * SEMANTIC SIMILARITY CHECK: Reject questions too similar to existing ones
+ */
+function checkSemanticRedundancy(
+  newQuestion: string,
+  existingQuestions: string[],
+  threshold: number = 0.65
+): { isRedundant: boolean; mostSimilar?: string; similarity?: number } {
+  const normalizedNew = newQuestion.toLowerCase();
+  
+  for (const existing of existingQuestions) {
+    const similarity = calculateTextSimilarity(normalizedNew, existing.toLowerCase());
+    if (similarity >= threshold) {
+      return {
+        isRedundant: true,
+        mostSimilar: existing.substring(0, 100),
+        similarity
+      };
+    }
+  }
+  
+  return { isRedundant: false };
+}
+
+/**
+ * BLOOM ENFORCEMENT: Validate that question actually requires the specified cognitive operation
+ */
+function validateBloomEnforcement(
+  questionText: string,
+  bloomLevel: string
+): { valid: boolean; reason?: string } {
+  const config = BLOOM_COGNITIVE_OPERATIONS[bloomLevel.toLowerCase()];
+  if (!config) return { valid: true };
+  
+  const lowerText = questionText.toLowerCase();
+  
+  // Check for forbidden patterns (e.g., "key factors include" for higher-order blooms)
+  for (const pattern of config.forbiddenPatterns) {
+    if (pattern.test(questionText)) {
+      return {
+        valid: false,
+        reason: `Question uses forbidden pattern for ${bloomLevel} level: ${pattern.toString()}`
+      };
+    }
+  }
+  
+  // For higher-order blooms, ensure question isn't just asking for a list
+  if (['analyzing', 'evaluating', 'creating'].includes(bloomLevel.toLowerCase())) {
+    const listingPatterns = [
+      /^(list|name|identify|state)\s+/i,
+      /what\s+are\s+the\s+(main|key|primary)\s+\w+\s+of/i,
+      /the\s+factors\s+include/i
+    ];
+    
+    for (const pattern of listingPatterns) {
+      if (pattern.test(questionText)) {
+        return {
+          valid: false,
+          reason: `${bloomLevel} question should not ask for simple listing`
+        };
+      }
+    }
+  }
+  
+  return { valid: true };
 }
 
 // ============= AI GENERATION =============
@@ -795,7 +978,7 @@ function randomizeAnswerPosition(correctText: string, distractors: string[]): { 
 }
 
 /**
- * Generate MCQ questions with ENFORCED A, B, C, D options and RANDOMIZED correct answer position
+ * Generate MCQ questions with ENFORCED cognitive operations and RANDOMIZED correct answer position
  */
 async function generateMCQQuestions(
   topic: string,
@@ -804,105 +987,117 @@ async function generateMCQQuestions(
   apiKey: string,
   registry: GenerationRegistry
 ): Promise<any[]> {
+  // Get the enhanced bloom configuration for cognitive enforcement
+  const bloomConfig = BLOOM_COGNITIVE_OPERATIONS_ENHANCED[bloom.toLowerCase()] || 
+                      BLOOM_COGNITIVE_OPERATIONS_ENHANCED.understanding;
+  
   const questionsSpec = intents.map((intent, idx) => `
 Question ${idx + 1}:
   FOCUS CONCEPT: "${intent.concept}"
-  COGNITIVE OPERATION: "${intent.operation}" (Bloom's ${bloom} level)
+  REQUIRED COGNITIVE OPERATION: "${intent.operation}"
+  COGNITIVE REQUIREMENT: ${bloomConfig.requirement}
   DIFFICULTY: "${intent.difficulty}"
   
-  Generate a question that requires students to ${intent.operation} about ${intent.concept} in the context of ${topic}.
+  The question MUST require students to actually ${intent.operation} - not just recall or describe.
+  The correct answer must demonstrate ${intent.operation} was performed, not just pattern matching.
 `).join('\n');
 
-  const usedTexts = registry.usedQuestionTexts.slice(-10).map(t => t.substring(0, 100));
+  const usedTexts = registry.usedQuestionTexts.slice(-15).map(t => t.substring(0, 120));
   
-  // Create bloom-specific examples
-  const bloomExamples: Record<string, string> = {
-    'Remembering': `Example: "Which of the following is a characteristic of ${topic}?" with specific factual options`,
-    'Understanding': `Example: "What is the main purpose of ${topic}?" with options explaining different aspects`,
-    'Applying': `Example: "In a scenario where..., which ${topic} approach would you use?" with practical application options`,
-    'Analyzing': `Example: "What is the relationship between X and Y in ${topic}?" with analytical comparison options`,
-    'Evaluating': `Example: "Which approach to ${topic} would be most effective for...?" with options requiring judgment`,
-    'Creating': `Example: "If you were designing a solution using ${topic}, which approach would best...?" with design-oriented options`
+  // Bloom-specific question structure requirements
+  const bloomRequirements: Record<string, string> = {
+    'Remembering': `Questions must ask for direct recall of specific facts, definitions, or terms.
+    FORMAT: "What is...?", "Which term describes...?", "Define..."`,
+    
+    'Understanding': `Questions must require explaining MEANING or SIGNIFICANCE, not just naming.
+    FORMAT: "Why is X important?", "What does X mean in the context of...?", "Explain the relationship between..."
+    FORBIDDEN: Simple identification or listing`,
+    
+    'Applying': `Questions MUST present a specific SCENARIO or PROBLEM to solve.
+    FORMAT: "Given [scenario], how would you...?", "In the following situation..., what approach...?"
+    REQUIRED: A concrete situation where knowledge must be USED
+    FORBIDDEN: Abstract questions without scenarios`,
+    
+    'Analyzing': `Questions MUST require breaking down and identifying RELATIONSHIPS between components.
+    FORMAT: "How does X relate to Y?", "What distinguishes X from Y?", "Examine the interaction between..."
+    REQUIRED: Comparison, contrast, or relationship identification
+    FORBIDDEN: "What are the key factors?" or any listing pattern`,
+    
+    'Evaluating': `Questions MUST require making a JUDGMENT or ASSESSMENT with criteria.
+    FORMAT: "Which approach is MOST effective for...?", "Evaluate the advantages of X over Y for..."
+    REQUIRED: A verdict (best, most appropriate, most effective) WITH justification
+    FORBIDDEN: Questions that merely ask to describe or list`,
+    
+    'Creating': `Questions MUST require DESIGNING, PLANNING, or PRODUCING something new.
+    FORMAT: "Design a solution for...", "How would you construct...?", "Develop an approach to..."
+    REQUIRED: Tangible output - a design, plan, or new combination
+    FORBIDDEN: Questions that only ask to explain or describe existing concepts`
   };
   
   const prompt = `Generate ${intents.length} PROFESSIONAL Multiple Choice Questions for an academic examination.
 
-🚨 CRITICAL: GENERATE COMPLETE, SPECIFIC, REALISTIC CONTENT - NO PLACEHOLDERS 🚨
+🚨 CRITICAL INSTRUCTION: ENFORCE COGNITIVE OPERATIONS 🚨
 
 TOPIC: ${topic}
 BLOOM'S TAXONOMY LEVEL: ${bloom}
 
-${bloomExamples[bloom] || ''}
+=== BLOOM COGNITIVE REQUIREMENT FOR ${bloom.toUpperCase()} ===
+${bloomRequirements[bloom] || bloomRequirements['Understanding']}
 
-=== PREVIOUSLY USED QUESTIONS (AVOID SIMILAR) ===
-${usedTexts.length > 0 ? usedTexts.map((t, i) => `${i + 1}. "${t}..."`).join('\n') : 'None yet - generate fresh questions'}
+=== COGNITIVE OPERATION ENFORCEMENT ===
+The cognitive operation is NOT A LABEL - it is the MENTAL ACTION required to answer correctly.
+Each question MUST genuinely require the specified operation to find the correct answer.
 
-=== QUESTION REQUIREMENTS ===
+Example of BAD enforcement (operation as label):
+  "Apply the concept of photosynthesis" → then gives options that just NAME things
+
+Example of GOOD enforcement (operation as actual requirement):
+  "A farmer notices yellowing leaves. Based on photosynthesis principles, which solution..."
+  → Requires actually APPLYING knowledge to solve the scenario
+
+=== ALREADY GENERATED (AVOID SEMANTIC OVERLAP) ===
+${usedTexts.length > 0 ? usedTexts.map((t, i) => `${i + 1}. "${t}..."`).join('\n') : 'None yet - first batch'}
+
+=== QUESTION SPECIFICATIONS ===
 ${questionsSpec}
 
-=== ABSOLUTE REQUIREMENTS - VIOLATIONS WILL BE REJECTED ===
+=== ABSOLUTE REQUIREMENTS ===
 
 1. QUESTION STEMS:
-   - Must be specific, complete sentences asking about ACTUAL concepts
-   - NO generic stems like "What is the definition of X?" unless appropriate for remembering level
-   - For higher Bloom's levels (Applying, Analyzing, Evaluating, Creating): Use scenarios, case studies, or problem situations
-   - Each question must be UNIQUE - different focus than others in this batch
+   - Must ACTUALLY require the specified cognitive operation
+   - NO generic stems - each must be specific to the concept
+   - For ${bloom}: ${bloomConfig.questionTemplate}
+   - NO "(Question X)" prefixes or numbering artifacts
 
 2. ANSWER OPTIONS (A, B, C, D):
-   - MUST BE ACTUAL SUBSTANTIVE CONTENT - real terms, real concepts, real descriptions
-   - ABSOLUTELY NO placeholder text like:
+   - MUST be REAL, SUBSTANTIVE content
+   - 🚫 ABSOLUTELY FORBIDDEN placeholder text:
      * "Correct answer related to..."
      * "Plausible distractor about..."
-     * "Another distractor for..."
-     * "Option X for [topic]"
-   - Each option must be a complete, meaningful response that could appear on a real exam
-   - Options should be similar in length and grammatical structure
-   - All options must be plausible to someone with partial knowledge
+     * "Option A for [topic]"
+     * Any meta-reference to what the option should be
+   - Each option must be a complete, specific response
+   - Options similar in length and grammatical structure
+   - All distractors must be plausible but clearly wrong
 
-3. CORRECT ANSWER:
-   - One option must be clearly correct
-   - Provide substantive explanation for why it's correct
+3. SEMANTIC UNIQUENESS:
+   - Each question must target a DIFFERENT aspect of the topic
+   - No two questions should be answerable with the same knowledge
+   - Vary the specific focus within the concept
 
-4. DISTRACTORS (Wrong options):
-   - Must represent common misconceptions or partial understanding
-   - Must be plausible but clearly wrong to someone who knows the material
-   - Should test understanding, not trick students with wordplay
-
-=== EXAMPLE OF GOOD MCQ ===
-{
-  "text": "In requirements engineering, what is the primary purpose of requirement validation?",
-  "correct_option": "To ensure requirements accurately reflect stakeholder needs and are feasible to implement",
-  "distractors": [
-    "To convert requirements into programming code",
-    "To assign requirements to specific development team members", 
-    "To estimate the cost of implementing each requirement"
-  ],
-  "explanation": "Validation confirms requirements are correct, complete, and implementable before development begins."
-}
-
-=== EXAMPLE OF BAD MCQ (DO NOT DO THIS) ===
-{
-  "text": "What is the concept of ${topic}?",
-  "choices": {
-    "A": "Correct answer related to ${topic}",
-    "B": "Plausible distractor about ${topic}",
-    "C": "Another distractor for ${topic}",
-    "D": "Final option regarding ${topic}"
-  }
-}
-
-Return ONLY valid JSON with this structure:
+Return ONLY valid JSON:
 {
   "questions": [
     {
-      "text": "[Complete, specific question about the topic]",
-      "correct_option": "[The actual correct answer text]",
+      "text": "[Complete question - NO numbering prefixes]",
+      "correct_option": "[The actual correct answer - FULL SUBSTANTIVE TEXT]",
       "distractors": [
-        "[First wrong but plausible option]",
-        "[Second wrong but plausible option]",
-        "[Third wrong but plausible option]"
+        "[Wrong but plausible option 1 - FULL TEXT]",
+        "[Wrong but plausible option 2 - FULL TEXT]",
+        "[Wrong but plausible option 3 - FULL TEXT]"
       ],
-      "explanation": "[Why the correct option is right]"
+      "explanation": "[Why correct option is right]",
+      "cognitive_verification": "[How this question requires ${bloom.toLowerCase()} thinking]"
     }
   ]
 }`;
@@ -1429,18 +1624,109 @@ serve(async (req) => {
       }
     }
 
-    // Assemble final test preserving slot order
-    const finalQuestions: any[] = [];
+    // ============= STEP 3: NORMALIZE AND VALIDATE ALL QUESTIONS =============
+    console.log(`\n🔧 === NORMALIZATION & VALIDATION PHASE ===`);
+    
+    const rawQuestions: any[] = [];
     for (const slot of allSlots) {
       const filledSlot = filledById.get(slot.id);
       if (filledSlot && filledSlot.question) {
-        // Add points to question
         filledSlot.question.points = filledSlot.points;
-        finalQuestions.push(filledSlot.question);
+        rawQuestions.push(filledSlot.question);
       }
     }
     
-    const trimmedQuestions = finalQuestions.slice(0, body.total_items);
+    // Apply normalization and validation
+    const normalizedQuestions: any[] = [];
+    const rejectedQuestions: any[] = [];
+    const acceptedTexts: string[] = [];
+    
+    for (const q of rawQuestions) {
+      // NORMALIZE: Clean question text
+      const originalText = q.question_text || '';
+      const normalizedText = normalizeQuestionText(originalText);
+      
+      // Check if normalization changed the text significantly
+      if (normalizedText !== originalText) {
+        console.log(`   📝 Normalized: "${originalText.substring(0, 40)}..." → "${normalizedText.substring(0, 40)}..."`);
+      }
+      
+      // VALIDATE: Check Bloom level enforcement
+      const bloomValidation = validateBloomEnforcement(normalizedText, q.bloom_level || 'understanding');
+      if (!bloomValidation.valid) {
+        console.warn(`   ⚠️ Bloom validation failed for: "${normalizedText.substring(0, 50)}..." - ${bloomValidation.reason}`);
+        // Don't reject, but flag for review
+        q.needs_review = true;
+        q.validation_notes = bloomValidation.reason;
+      }
+      
+      // VALIDATE: Check semantic similarity against already-accepted questions
+      const similarityCheck = checkSemanticRedundancy(normalizedText, acceptedTexts, 0.70);
+      if (similarityCheck.isRedundant) {
+        console.warn(`   🔁 Redundant question detected (${(similarityCheck.similarity! * 100).toFixed(0)}% similar): "${normalizedText.substring(0, 50)}..."`);
+        rejectedQuestions.push({
+          ...q,
+          rejection_reason: `Semantically similar to existing question (${(similarityCheck.similarity! * 100).toFixed(0)}% match)`,
+          similar_to: similarityCheck.mostSimilar
+        });
+        continue; // Skip this question
+      }
+      
+      // VALIDATE: For MCQs, ensure proper structure
+      if (q.question_type === 'mcq') {
+        const choices = q.choices;
+        if (!choices || typeof choices !== 'object') {
+          console.warn(`   ❌ MCQ missing choices object, skipping`);
+          rejectedQuestions.push({ ...q, rejection_reason: 'Missing choices object' });
+          continue;
+        }
+        
+        const hasAllOptions = ['A', 'B', 'C', 'D'].every(key => 
+          choices[key] && typeof choices[key] === 'string' && choices[key].trim().length > 5
+        );
+        
+        if (!hasAllOptions) {
+          console.warn(`   ❌ MCQ missing required options A-D, skipping`);
+          rejectedQuestions.push({ ...q, rejection_reason: 'Missing or empty options A-D' });
+          continue;
+        }
+        
+        // Validate correct answer is A, B, C, or D
+        if (!['A', 'B', 'C', 'D'].includes(q.correct_answer)) {
+          console.warn(`   ⚠️ MCQ has invalid correct_answer "${q.correct_answer}", defaulting to A`);
+          q.correct_answer = 'A';
+          q.needs_review = true;
+        }
+        
+        // Check for placeholder content in options
+        const placeholderPatterns = [
+          /correct answer (related to|about|for)/i,
+          /plausible distractor/i,
+          /another distractor/i,
+          /option [a-d] for/i
+        ];
+        
+        const hasPlaceholder = Object.values(choices).some(
+          (opt: any) => placeholderPatterns.some(p => p.test(String(opt)))
+        );
+        
+        if (hasPlaceholder) {
+          console.warn(`   ❌ MCQ contains placeholder content, skipping`);
+          rejectedQuestions.push({ ...q, rejection_reason: 'Contains placeholder content' });
+          continue;
+        }
+      }
+      
+      // Question passed all validations
+      q.question_text = normalizedText;
+      normalizedQuestions.push(q);
+      acceptedTexts.push(normalizedText.toLowerCase());
+    }
+    
+    console.log(`   ✅ Normalized: ${normalizedQuestions.length} questions accepted`);
+    console.log(`   ❌ Rejected: ${rejectedQuestions.length} questions (redundant/invalid)`);
+    
+    const trimmedQuestions = normalizedQuestions.slice(0, body.total_items);
     
     // Calculate statistics by question type
     const typeCounts = {
@@ -1476,6 +1762,9 @@ serve(async (req) => {
       from_bank: bankFilled.length,
       ai_generated: aiFilled.filter(s => s.filled).length,
       unfilled: allSlots.length - filledById.size,
+      rejected_redundant: rejectedQuestions.length,
+      normalization_applied: true,
+      semantic_validation: true,
       by_question_type: typeCounts,
       by_bloom: trimmedQuestions.reduce((acc: Record<string, number>, q: any) => {
         const level = q.bloom_level?.toLowerCase() || 'unknown';
