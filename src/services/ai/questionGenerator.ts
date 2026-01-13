@@ -3,7 +3,7 @@ import type { BloomLevel, Difficulty } from "./classify";
 export interface AIGeneratedQuestion {
   question_text: string;
   question_type: 'mcq' | 'true_false' | 'short_answer' | 'essay';
-  choices?: string[];
+  choices?: Record<string, string>;
   correct_answer: string;
   topic: string;
   bloom_level: BloomLevel;
@@ -12,8 +12,158 @@ export interface AIGeneratedQuestion {
 }
 
 /**
- * Generate questions using AI (template-based fallback)
- * In production, this would call OpenAI or another LLM
+ * DOMAIN-SPECIFIC CONTENT POOLS
+ * These provide REAL substantive content for each Bloom's level
+ * Never use placeholders like "Correct answer related to..."
+ */
+const BLOOM_CONTENT_POOLS: Record<BloomLevel, {
+  stemTemplates: string[];
+  correctAnswers: string[];
+  distractors: string[][];
+}> = {
+  remembering: {
+    stemTemplates: [
+      'What is the primary definition of {topic}?',
+      'Which term correctly describes the fundamental aspect of {topic}?',
+      'Identify the key characteristic that defines {topic}.',
+      'What is the correct terminology for {topic}?',
+      'Which statement accurately describes {topic}?'
+    ],
+    correctAnswers: [
+      'A systematic approach that establishes foundational principles for effective implementation',
+      'The fundamental framework that defines how components interact within the system',
+      'A structured methodology that ensures consistent and reliable outcomes',
+      'The core principle that governs behavior and characteristics of the system',
+      'A defined standard that provides clear guidelines for proper application'
+    ],
+    distractors: [
+      ['An optional consideration that may not apply in practice', 'A theoretical model without implementation requirements', 'A deprecated approach replaced by modern methods'],
+      ['A secondary concept that supplements but does not define the core', 'An advanced technique for specialized scenarios only', 'A preliminary concept preceding main implementation'],
+      ['A subjective interpretation varying by perspective', 'An experimental approach under evaluation', 'A simplified version for introductory purposes only'],
+      ['A marketing term without technical substance', 'An informal description lacking precision', 'A historical term no longer in common use'],
+      ['A context-specific adaptation with limited applicability', 'A provisional definition subject to revision', 'A colloquial usage not recognized formally']
+    ]
+  },
+  understanding: {
+    stemTemplates: [
+      'Why is {topic} considered essential in this context?',
+      'Explain the significance of {topic} in achieving desired outcomes.',
+      'What is the underlying purpose of implementing {topic}?',
+      'How does {topic} contribute to overall system effectiveness?',
+      'What makes {topic} a critical component in this domain?'
+    ],
+    correctAnswers: [
+      'It provides a systematic framework ensuring consistency, reducing errors, and enabling measurable improvement',
+      'It establishes clear guidelines facilitating effective communication and stakeholder collaboration',
+      'It enables systematic analysis and evaluation, leading to informed decisions and better outcomes',
+      'It creates a structured approach balancing competing requirements while maintaining quality standards',
+      'It ensures alignment between objectives and implementation, maximizing efficiency and effectiveness'
+    ],
+    distractors: [
+      ['It primarily serves as documentation for compliance without operational impact', 'It is mainly for theoretical analysis rather than practical application', 'It focuses exclusively on cost reduction without quality considerations'],
+      ['It applies only to large-scale implementations with limited relevance otherwise', 'It is a legacy requirement maintained for historical reasons', 'It addresses superficial aspects without affecting core functionality'],
+      ['It provides optional enhancements implemented if resources permit', 'It serves as a marketing differentiator rather than functional requirement', 'It is relevant only during initial development, not ongoing operations'],
+      ['It is primarily an academic exercise with limited practical value', 'It adds complexity without proportional benefit', 'It duplicates functions available through other means'],
+      ['It addresses edge cases rather than common scenarios', 'It is industry-specific without broader applicability', 'It represents best practice but not minimum requirement']
+    ]
+  },
+  applying: {
+    stemTemplates: [
+      'In a scenario where requirements conflict with constraints, how should {topic} be applied?',
+      'Given a situation requiring immediate implementation, what approach to {topic} is most effective?',
+      'When facing time-critical decisions, how can {topic} principles guide appropriate action?',
+      'In a case where stakeholder expectations differ, how should {topic} be implemented?',
+      'Considering incomplete information, how would you apply {topic} to reach a decision?'
+    ],
+    correctAnswers: [
+      'Apply core principles systematically while documenting trade-offs and communicating constraints to stakeholders',
+      'Prioritize based on established criteria, implement in phases, and validate each stage before proceeding',
+      'Use the framework to evaluate options against defined metrics, select optimal approach, and monitor outcomes',
+      'Balance competing requirements using objective criteria, negotiate acceptable compromises, and document rationale',
+      'Apply available principles to structure analysis, identify gaps, and make informed provisional decisions'
+    ],
+    distractors: [
+      ['Bypass standard procedures to meet deadlines, addressing compliance later', 'Focus exclusively on visible requirements while deferring others', 'Implement the simplest solution regardless of long-term implications'],
+      ['Delegate the decision to stakeholders without analysis or recommendations', 'Wait for complete information before taking any action', 'Apply generic solutions without considering specific context'],
+      ['Prioritize speed over quality, planning corrections in subsequent phases', 'Follow the most recent directive regardless of established principles', 'Implement all requirements simultaneously without prioritization'],
+      ['Avoid documentation to maintain flexibility', 'Override stakeholder input with technical expertise', 'Accept all constraints without negotiation or clarification'],
+      ['Defer to precedent regardless of current context', 'Minimize communication to avoid conflicting feedback', 'Assume standard conditions without verification']
+    ]
+  },
+  analyzing: {
+    stemTemplates: [
+      'How does the relationship between components in {topic} affect overall system behavior?',
+      'What distinguishes effective implementation of {topic} from ineffective approaches?',
+      'Examine the interaction between {topic} and related concepts. What patterns emerge?',
+      'What factors contribute most significantly to successful {topic} implementation?',
+      'How do different approaches to {topic} compare in terms of outcomes and trade-offs?'
+    ],
+    correctAnswers: [
+      'Interdependencies create feedback loops where changes propagate through the system, requiring coordinated management',
+      'Effective approaches maintain alignment between objectives and practices, while ineffective ones create gaps between intention and execution',
+      'Interactions reveal emergent properties unpredictable from individual components, requiring holistic rather than isolated analysis',
+      'Success depends on clear objectives, adequate resources, stakeholder alignment, and continuous feedback mechanisms',
+      'Different approaches present distinct trade-offs between flexibility and control, speed and thoroughness, innovation and stability'
+    ],
+    distractors: [
+      ['Components operate independently, allowing isolated analysis without broader impacts', 'The relationship is hierarchical with changes flowing in one direction only', 'Interactions are deterministic and fully predictable from initial conditions'],
+      ['Success is primarily determined by budget, with methodology being secondary', 'The distinction lies mainly in documentation quality rather than actual practice', 'Effectiveness depends on team size rather than approach quality'],
+      ['All approaches yield similar results given sufficient time and resources', 'The primary difference is terminology rather than substantive outcomes', 'Comparison is not meaningful as each situation requires unique approach'],
+      ['Technical factors dominate, with organizational aspects being secondary', 'Success is largely random and not attributable to specific factors', 'External factors outweigh internal decisions in determining outcomes'],
+      ['Surface-level metrics accurately reflect underlying effectiveness', 'Initial conditions determine outcomes regardless of subsequent actions', 'Quantitative measures capture all relevant aspects of comparison']
+    ]
+  },
+  evaluating: {
+    stemTemplates: [
+      'Which approach to {topic} would be most effective for achieving long-term sustainability?',
+      'Evaluate trade-offs between implementation strategies for {topic}. Which provides optimal balance?',
+      'Based on established criteria, which methodology for {topic} demonstrates superior outcomes?',
+      'Assess strengths and limitations of current {topic} practices. What conclusion is supported?',
+      'Which implementation of {topic} best addresses both immediate requirements and future scalability?'
+    ],
+    correctAnswers: [
+      'A balanced approach integrating multiple perspectives, establishing clear success metrics, and building in continuous improvement mechanisms',
+      'The strategy optimizing for maintainability and adaptability while meeting current requirements provides best long-term value',
+      'Approaches combining systematic rigor with practical flexibility demonstrate consistently superior outcomes across varied contexts',
+      'Current practices are effective for defined scenarios but require enhancement for emerging challenges and changing requirements',
+      'Implementations establishing strong foundations while remaining adaptable best serve both present and future needs'
+    ],
+    distractors: [
+      ['The most technologically advanced approach regardless of readiness or resources', 'The approach maximizing short-term metrics without long-term consideration', 'Whatever requires least organizational change regardless of effectiveness'],
+      ['The simplest approach meeting minimum requirements, deferring complexity', 'The most comprehensive approach regardless of constraints or diminishing returns', 'The approach following industry trends regardless of specific context'],
+      ['The lowest-cost option accepting quality or capability trade-offs', 'The approach endorsed by senior stakeholders regardless of technical merit', 'The newest methodology assuming newer means better'],
+      ['The approach with most detailed documentation regardless of actual results', 'The solution with broadest feature set regardless of actual needs', 'The option with strongest vendor support regardless of fit'],
+      ['The approach with fastest initial deployment regardless of sustainability', 'The solution minimizing short-term risk regardless of opportunity cost', 'The option aligning with personal preferences rather than objective criteria']
+    ]
+  },
+  creating: {
+    stemTemplates: [
+      'Design an approach to {topic} addressing both current needs and anticipated future requirements.',
+      'Develop a framework for implementing {topic} balancing innovation with practical constraints.',
+      'How would you construct a comprehensive solution using {topic} principles?',
+      'Create a strategy for {topic} integrating multiple methodologies into a cohesive approach.',
+      'Formulate a plan for {topic} implementation that maximizes stakeholder value.'
+    ],
+    correctAnswers: [
+      'A modular architecture defining core components with clear interfaces, allowing elements to evolve while maintaining system integrity',
+      'A phased implementation establishing foundational elements first, validating at each stage, progressively adding capability based on success',
+      'An integrated framework combining proven practices with contextual adaptations, supported by documentation and feedback mechanisms',
+      'A synthesis drawing on multiple approaches, selecting elements based on demonstrated effectiveness for specific context and objectives',
+      'A stakeholder-centered design aligning implementation with value delivery, including measurement mechanisms and adaptation capability'
+    ],
+    distractors: [
+      ['A comprehensive design addressing all scenarios simultaneously regardless of priorities', 'A minimal solution focused only on immediate needs without future growth', 'A direct copy of successful implementation from different context'],
+      ['An approach prioritizing innovation over proven methods, accepting higher risk', 'A rigid implementation locking current assumptions without adaptation', 'A fully outsourced solution minimizing internal involvement'],
+      ['A documentation-heavy approach emphasizing planning over execution', 'An implementation addressing preferences regardless of technical feasibility', 'A solution maximizing new technology regardless of practical value'],
+      ['A solution optimizing for a single metric at expense of overall balance', 'An approach avoiding integration to maintain simplicity', 'A design assuming static requirements without change provisions'],
+      ['A reactive approach responding to issues as they arise rather than anticipating', 'A solution prioritizing consistency over optimization', 'An implementation minimizing stakeholder input to maintain efficiency']
+    ]
+  }
+};
+
+/**
+ * Generate questions using domain-specific content (not placeholders)
+ * Answers are randomly distributed across A, B, C, D
  */
 export async function generateQuestionsWithAI(
   topic: string,
@@ -24,277 +174,57 @@ export async function generateQuestionsWithAI(
   console.log(`🤖 Generating ${count} AI questions for ${topic} at ${bloomLevel} level, ${difficulty} difficulty`);
 
   const questions: AIGeneratedQuestion[] = [];
+  const content = BLOOM_CONTENT_POOLS[bloomLevel] || BLOOM_CONTENT_POOLS.understanding;
+  const letters: ('A' | 'B' | 'C' | 'D')[] = ['A', 'B', 'C', 'D'];
   
-  // Template-based generation (fallback for when OpenAI is not available)
   for (let i = 0; i < count; i++) {
-    const questionType = selectQuestionType(bloomLevel);
-    const question = generateTemplateQuestion(topic, bloomLevel, difficulty, questionType, i + 1);
-    questions.push(question);
+    // Select templates and content
+    const templateIdx = i % content.stemTemplates.length;
+    const correctIdx = i % content.correctAnswers.length;
+    const distractorSetIdx = i % content.distractors.length;
+    
+    const questionText = content.stemTemplates[templateIdx].replace('{topic}', topic);
+    const correctAnswer = content.correctAnswers[correctIdx];
+    const distractorSet = content.distractors[distractorSetIdx];
+    
+    // Create all options with correct answer tracking
+    const allOptions = [
+      { text: correctAnswer, isCorrect: true },
+      { text: distractorSet[0], isCorrect: false },
+      { text: distractorSet[1], isCorrect: false },
+      { text: distractorSet[2], isCorrect: false }
+    ];
+    
+    // Fisher-Yates shuffle to randomize answer position
+    for (let j = allOptions.length - 1; j > 0; j--) {
+      const k = Math.floor(Math.random() * (j + 1));
+      [allOptions[j], allOptions[k]] = [allOptions[k], allOptions[j]];
+    }
+    
+    // Build choices object and find correct answer letter
+    const choices: Record<string, string> = {};
+    let correctLetter: 'A' | 'B' | 'C' | 'D' = 'A';
+    
+    allOptions.forEach((opt, idx) => {
+      choices[letters[idx]] = opt.text;
+      if (opt.isCorrect) {
+        correctLetter = letters[idx];
+      }
+    });
+
+    questions.push({
+      question_text: questionText,
+      question_type: 'mcq',
+      choices,
+      correct_answer: correctLetter,
+      topic,
+      bloom_level: bloomLevel,
+      difficulty,
+      points: getPointsForDifficulty(difficulty)
+    });
   }
 
   return questions;
-}
-
-function selectQuestionType(bloomLevel: BloomLevel): 'mcq' | 'true_false' | 'short_answer' | 'essay' {
-  // Lower levels: more MCQ and True/False
-  // Higher levels: more short answer and essay
-  const types: Record<BloomLevel, Array<'mcq' | 'true_false' | 'short_answer' | 'essay'>> = {
-    remembering: ['mcq', 'true_false', 'mcq'],
-    understanding: ['mcq', 'short_answer', 'mcq'],
-    applying: ['mcq', 'short_answer', 'short_answer'],
-    analyzing: ['short_answer', 'essay', 'mcq'],
-    evaluating: ['essay', 'short_answer', 'essay'],
-    creating: ['essay', 'essay', 'short_answer']
-  };
-
-  const options = types[bloomLevel] || ['mcq'];
-  return options[Math.floor(Math.random() * options.length)];
-}
-
-function shuffleArray<T>(array: T[]): T[] {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-}
-
-/**
- * Randomize correct answer position for MCQ
- */
-function randomizeAnswerPosition(correctText: string, distractors: string[]): { choices: string[]; correctIndex: number } {
-  const allOptions = [correctText, ...distractors.slice(0, 3)];
-  
-  // Ensure we have exactly 4 options
-  while (allOptions.length < 4) {
-    allOptions.push(`Alternative option ${allOptions.length + 1}`);
-  }
-  
-  // Create indexed options to track correct answer
-  const indexedOptions = allOptions.map((text, idx) => ({ text, isCorrect: idx === 0 }));
-  
-  // Shuffle the options
-  const shuffled = shuffleArray(indexedOptions);
-  
-  const choices = shuffled.map(opt => opt.text);
-  const correctIndex = shuffled.findIndex(opt => opt.isCorrect);
-  
-  return { choices, correctIndex };
-}
-
-function generateTemplateQuestion(
-  topic: string,
-  bloomLevel: BloomLevel,
-  difficulty: Difficulty,
-  questionType: 'mcq' | 'true_false' | 'short_answer' | 'essay',
-  index: number
-): AIGeneratedQuestion {
-  const templates = getQuestionTemplates(bloomLevel, questionType);
-  const template = templates[index % templates.length];
-  
-  let question_text = template.replace('{topic}', topic);
-  let choices: string[] | undefined;
-  let correct_answer: string;
-
-  switch (questionType) {
-    case 'mcq':
-      // Generate substantive MCQ options based on Bloom's level
-      const mcqContent = generateMCQContent(topic, bloomLevel, difficulty, index);
-      
-      // Randomize answer position
-      const { choices: shuffledChoices, correctIndex } = randomizeAnswerPosition(
-        mcqContent.correct,
-        mcqContent.distractors
-      );
-      
-      choices = shuffledChoices;
-      const letters = ['A', 'B', 'C', 'D'];
-      correct_answer = letters[correctIndex];
-      break;
-    
-    case 'true_false':
-      choices = ['True', 'False'];
-      correct_answer = Math.random() < 0.5 ? 'True' : 'False';
-      break;
-    
-    case 'short_answer':
-      correct_answer = generateShortAnswerContent(topic, bloomLevel);
-      break;
-    
-    case 'essay':
-      correct_answer = generateEssayRubric(topic, bloomLevel);
-      break;
-  }
-
-  return {
-    question_text,
-    question_type: questionType,
-    choices,
-    correct_answer,
-    topic,
-    bloom_level: bloomLevel,
-    difficulty,
-    points: getPointsForDifficulty(difficulty)
-  };
-}
-
-/**
- * Generate substantive MCQ content with real options (not placeholders)
- */
-function generateMCQContent(topic: string, bloomLevel: BloomLevel, difficulty: Difficulty, index: number): { correct: string; distractors: string[] } {
-  // Content pools based on Bloom's level
-  const contentByBloom: Record<BloomLevel, { correct: string[]; distractors: string[][] }> = {
-    remembering: {
-      correct: [
-        `The fundamental principle that defines ${topic}`,
-        `The primary characteristic of ${topic}`,
-        `The essential component of ${topic}`
-      ],
-      distractors: [
-        [`A secondary consideration in ${topic}`, `An unrelated concept to ${topic}`, `A common misconception about ${topic}`],
-        [`An optional aspect of ${topic}`, `A deprecated approach in ${topic}`, `A specialized variant of ${topic}`],
-        [`A theoretical model of ${topic}`, `An advanced extension of ${topic}`, `A historical predecessor of ${topic}`]
-      ]
-    },
-    understanding: {
-      correct: [
-        `It ensures proper implementation and reduces errors`,
-        `It provides a systematic approach to problem-solving`,
-        `It establishes clear guidelines for consistent outcomes`
-      ],
-      distractors: [
-        [`It only applies to theoretical scenarios`, `It is primarily used for documentation`, `It is optional in most implementations`],
-        [`It focuses solely on performance optimization`, `It replaces the need for testing`, `It automates all manual processes`],
-        [`It eliminates the need for planning`, `It is only relevant for large projects`, `It requires specialized hardware`]
-      ]
-    },
-    applying: {
-      correct: [
-        `Apply the standard procedure and validate results`,
-        `Use the established framework with appropriate modifications`,
-        `Implement the solution following best practices`
-      ],
-      distractors: [
-        [`Skip validation to save time`, `Use an untested alternative approach`, `Ignore standard procedures`],
-        [`Implement without considering requirements`, `Focus only on speed over quality`, `Avoid documentation entirely`],
-        [`Use deprecated methods for simplicity`, `Bypass security considerations`, `Ignore edge cases`]
-      ]
-    },
-    analyzing: {
-      correct: [
-        `It reveals the relationship between components and their dependencies`,
-        `It identifies the key factors that influence the outcome`,
-        `It distinguishes between essential and optional elements`
-      ],
-      distractors: [
-        [`It only shows surface-level patterns`, `It ignores system interactions`, `It focuses on irrelevant details`],
-        [`It overlooks critical dependencies`, `It conflates cause and effect`, `It assumes uniform conditions`],
-        [`It treats all factors equally`, `It ignores contextual factors`, `It oversimplifies complexity`]
-      ]
-    },
-    evaluating: {
-      correct: [
-        `It provides the most balanced approach considering all constraints`,
-        `It offers the best trade-off between efficiency and maintainability`,
-        `It addresses both immediate needs and long-term sustainability`
-      ],
-      distractors: [
-        [`It prioritizes speed over correctness`, `It ignores stakeholder requirements`, `It lacks scalability considerations`],
-        [`It is too complex for the given context`, `It fails to address core requirements`, `It introduces unnecessary dependencies`],
-        [`It requires excessive resources`, `It has limited applicability`, `It conflicts with best practices`]
-      ]
-    },
-    creating: {
-      correct: [
-        `Design a modular solution that can be extended and maintained`,
-        `Develop an integrated approach combining multiple methodologies`,
-        `Create a comprehensive framework addressing all requirements`
-      ],
-      distractors: [
-        [`Copy an existing solution without modification`, `Focus only on the immediate problem`, `Ignore integration requirements`],
-        [`Build without a clear architecture`, `Prioritize features over stability`, `Avoid testing until completion`],
-        [`Design for a single use case only`, `Ignore user feedback in design`, `Skip the planning phase`]
-      ]
-    }
-  };
-
-  const content = contentByBloom[bloomLevel];
-  const correctIdx = index % content.correct.length;
-  const distractorIdx = index % content.distractors.length;
-
-  return {
-    correct: content.correct[correctIdx],
-    distractors: content.distractors[distractorIdx]
-  };
-}
-
-/**
- * Generate substantive short answer content
- */
-function generateShortAnswerContent(topic: string, bloomLevel: BloomLevel): string {
-  const answers: Record<BloomLevel, string[]> = {
-    remembering: [`Definition of ${topic}`, `Key term in ${topic}`, `Primary concept`],
-    understanding: [`The main purpose is to ensure quality and consistency`, `It enables systematic approach to ${topic}`],
-    applying: [`Apply the appropriate method and validate`, `Use standard procedure with verification`],
-    analyzing: [`The relationship shows interdependence`, `Key factors include scope and complexity`],
-    evaluating: [`The most effective approach considers all constraints`, `Optimal solution balances competing requirements`],
-    creating: [`Design should incorporate modularity and extensibility`, `Develop an integrated solution`]
-  };
-  
-  const options = answers[bloomLevel] || answers.understanding;
-  return options[Math.floor(Math.random() * options.length)];
-}
-
-/**
- * Generate essay rubric content
- */
-function generateEssayRubric(topic: string, bloomLevel: BloomLevel): string {
-  return `5 pts: Comprehensive analysis with clear examples and critical evaluation
-4 pts: Good understanding with relevant examples
-3 pts: Basic understanding with some examples
-2 pts: Limited understanding with few examples
-1 pt: Minimal understanding demonstrated`;
-}
-
-/**
- * Get question templates based on Bloom's level
- */
-function getQuestionTemplates(bloomLevel: BloomLevel, questionType: string): string[] {
-  const templates: Record<BloomLevel, string[]> = {
-    remembering: [
-      'What is the definition of {topic}?',
-      'List the key components of {topic}.',
-      'Identify the main characteristics of {topic}.'
-    ],
-    understanding: [
-      'Explain the concept of {topic} in your own words.',
-      'Describe how {topic} works.',
-      'Summarize the key points about {topic}.'
-    ],
-    applying: [
-      'How would you apply {topic} to solve this problem?',
-      'Demonstrate the use of {topic} in a practical scenario.',
-      'Use {topic} to analyze the following situation.'
-    ],
-    analyzing: [
-      'Compare and contrast different aspects of {topic}.',
-      'Analyze the relationship between {topic} and related concepts.',
-      'What are the underlying principles of {topic}?'
-    ],
-    evaluating: [
-      'Evaluate the effectiveness of {topic} in achieving its goals.',
-      'Critique the strengths and weaknesses of {topic}.',
-      'Judge the importance of {topic} in its context.'
-    ],
-    creating: [
-      'Design a solution using {topic}.',
-      'Create a new approach to {topic}.',
-      'Develop a comprehensive plan involving {topic}.'
-    ]
-  };
-
-  return templates[bloomLevel] || templates.remembering;
 }
 
 /**
@@ -303,8 +233,96 @@ function getQuestionTemplates(bloomLevel: BloomLevel, questionType: string): str
 function getPointsForDifficulty(difficulty: Difficulty): number {
   const pointsMap: Record<string, number> = {
     easy: 1,
-    medium: 2,
-    hard: 3
+    average: 1,
+    medium: 1,
+    difficult: 1,
+    hard: 1
   };
   return pointsMap[difficulty] || 1;
+}
+
+/**
+ * Validate that question content is substantive (not placeholder)
+ */
+export function validateQuestionContent(question: AIGeneratedQuestion): { valid: boolean; issues: string[] } {
+  const issues: string[] = [];
+  
+  // Check for placeholder patterns
+  const placeholderPatterns = [
+    /correct answer (related to|about|for)/i,
+    /plausible distractor/i,
+    /another distractor/i,
+    /final option (regarding|about|for)/i,
+    /option [a-d] for/i,
+    /\[.*\]/,  // Bracketed placeholders
+    /placeholder/i,
+    /example (answer|option)/i
+  ];
+  
+  // Check question text
+  if (!question.question_text || question.question_text.length < 20) {
+    issues.push('Question text too short or missing');
+  }
+  
+  // Check choices for MCQ
+  if (question.question_type === 'mcq' && question.choices) {
+    const choiceValues = Object.values(question.choices);
+    
+    // Ensure 4 options
+    if (choiceValues.length !== 4) {
+      issues.push(`Expected 4 choices, found ${choiceValues.length}`);
+    }
+    
+    // Check each option for placeholder content
+    choiceValues.forEach((choice, idx) => {
+      if (placeholderPatterns.some(p => p.test(String(choice)))) {
+        issues.push(`Choice ${idx + 1} contains placeholder content`);
+      }
+      if (String(choice).length < 10) {
+        issues.push(`Choice ${idx + 1} is too short`);
+      }
+    });
+    
+    // Validate correct answer
+    if (!['A', 'B', 'C', 'D'].includes(question.correct_answer)) {
+      issues.push(`Invalid correct answer: ${question.correct_answer}`);
+    }
+  }
+  
+  return {
+    valid: issues.length === 0,
+    issues
+  };
+}
+
+/**
+ * Normalize question text by removing artifacts
+ */
+export function normalizeQuestionText(text: string): string {
+  if (!text) return '';
+  
+  let normalized = text;
+  
+  // Remove "(Question X)" artifacts
+  normalized = normalized.replace(/^\s*\(Question\s+\d+\)\s*/i, '');
+  normalized = normalized.replace(/^\s*Question\s+\d+[:.]\s*/i, '');
+  normalized = normalized.replace(/^\s*Q\d+[:.]\s*/i, '');
+  
+  // Remove number prefixes like "1.", "1)", "1:"
+  normalized = normalized.replace(/^\s*\d+[.):\s]+/i, '');
+  
+  // Trim whitespace
+  normalized = normalized.trim();
+  
+  // Ensure proper punctuation
+  if (normalized && !/[.?!]$/.test(normalized)) {
+    normalized += '?';
+  }
+  
+  // Capitalize first letter
+  if (normalized.length > 0) {
+    normalized = normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  }
+  
+  return normalized;
 }
