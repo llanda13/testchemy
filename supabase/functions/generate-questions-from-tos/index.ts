@@ -1693,7 +1693,7 @@ serve(async (req) => {
       }
     }
 
-    // ============= STEP 3: NORMALIZE AND VALIDATE ALL QUESTIONS =============
+    // ============= STEP 3: NORMALIZE, VALIDATE & COMPLETION GATE =============
     console.log(`\n🔧 === NORMALIZATION & VALIDATION PHASE ===`);
     
     const rawQuestions: any[] = [];
@@ -1706,7 +1706,7 @@ serve(async (req) => {
     }
     
     // Apply normalization and validation
-    const normalizedQuestions: any[] = [];
+    let normalizedQuestions: any[] = [];
     const rejectedQuestions: any[] = [];
     const acceptedTexts: string[] = [];
     
@@ -1794,8 +1794,134 @@ serve(async (req) => {
     
     console.log(`   ✅ Normalized: ${normalizedQuestions.length} questions accepted`);
     console.log(`   ❌ Rejected: ${rejectedQuestions.length} questions (redundant/invalid)`);
+
+    // ============= STEP 4: COMPLETION GATE - ENFORCE EXACT TOS COUNT =============
+    const requiredTotal = body.total_items;
+    let completionAttempts = 0;
+    const MAX_COMPLETION_ATTEMPTS = 3;
     
-    const trimmedQuestions = normalizedQuestions.slice(0, body.total_items);
+    while (normalizedQuestions.length < requiredTotal && completionAttempts < MAX_COMPLETION_ATTEMPTS) {
+      completionAttempts++;
+      const shortfall = requiredTotal - normalizedQuestions.length;
+      
+      console.log(`\n🔄 === COMPLETION GATE RETRY ${completionAttempts}/${MAX_COMPLETION_ATTEMPTS} ===`);
+      console.log(`   📊 Current: ${normalizedQuestions.length}/${requiredTotal} (need ${shortfall} more)`);
+      
+      // Determine which slots were not filled or had questions rejected
+      const unfilledSlots: Slot[] = [];
+      const usedSlotIds = new Set(normalizedQuestions.map(q => q.slot_id || q.id));
+      
+      for (const slot of allSlots) {
+        const filledSlot = filledById.get(slot.id);
+        if (!filledSlot || !filledSlot.filled) {
+          unfilledSlots.push(slot);
+        } else if (!usedSlotIds.has(slot.id) && !usedSlotIds.has(filledSlot.question?.id)) {
+          // This slot had a question but it was rejected during validation
+          unfilledSlots.push(slot);
+        }
+      }
+      
+      // If we can't identify unfilled slots, create generic MCQ slots for the shortfall
+      const slotsToFill = unfilledSlots.length > 0 
+        ? unfilledSlots.slice(0, shortfall)
+        : Array.from({ length: shortfall }, (_, i) => ({
+            id: `repair_slot_${completionAttempts}_${i}`,
+            topic: body.distributions[0]?.topic || 'General',
+            bloomLevel: ['remembering', 'understanding', 'applying'][i % 3],
+            difficulty: ['easy', 'average', 'difficult'][i % 3],
+            knowledgeDimension: 'conceptual',
+            questionType: 'mcq' as const,
+            points: 1,
+            filled: false
+          }));
+      
+      console.log(`   🎯 Generating ${slotsToFill.length} repair questions...`);
+      
+      // Generate repair questions using AI
+      const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+      if (!openAIApiKey) {
+        console.error(`   ❌ Cannot generate repair questions: OpenAI API key not configured`);
+        break;
+      }
+      
+      const repairFilled = await fillSlotsWithAI(slotsToFill, registry);
+      
+      // Validate and add repair questions
+      let repairAccepted = 0;
+      for (const slot of repairFilled) {
+        if (!slot.filled || !slot.question) continue;
+        
+        const q = slot.question;
+        q.points = slot.points || 1;
+        
+        const normalizedText = normalizeQuestionText(q.question_text || '');
+        
+        // Check for redundancy against existing accepted questions
+        const similarityCheck = checkSemanticRedundancy(normalizedText, acceptedTexts, 0.70);
+        if (similarityCheck.isRedundant) {
+          console.log(`   🔁 Repair question redundant, skipping`);
+          continue;
+        }
+        
+        // Validate MCQ structure
+        if (q.question_type === 'mcq') {
+          const choices = q.choices;
+          if (!choices || typeof choices !== 'object') continue;
+          const hasAllOptions = ['A', 'B', 'C', 'D'].every(key => 
+            choices[key] && typeof choices[key] === 'string' && choices[key].trim().length > 5
+          );
+          if (!hasAllOptions) continue;
+          if (!['A', 'B', 'C', 'D'].includes(q.correct_answer)) {
+            q.correct_answer = 'A';
+            q.needs_review = true;
+          }
+        }
+        
+        q.question_text = normalizedText;
+        q.metadata = { ...(q.metadata || {}), repair_attempt: completionAttempts };
+        normalizedQuestions.push(q);
+        acceptedTexts.push(normalizedText.toLowerCase());
+        repairAccepted++;
+      }
+      
+      console.log(`   ✅ Repair attempt ${completionAttempts}: added ${repairAccepted} questions`);
+      console.log(`   📊 New total: ${normalizedQuestions.length}/${requiredTotal}`);
+      
+      // If no progress was made, break to avoid infinite loop
+      if (repairAccepted === 0) {
+        console.warn(`   ⚠️ No progress made in repair attempt, breaking`);
+        break;
+      }
+    }
+    
+    // ============= STEP 5: FINAL VALIDATION - ENFORCE TOS CONTRACT =============
+    if (normalizedQuestions.length < requiredTotal) {
+      const finalShortfall = requiredTotal - normalizedQuestions.length;
+      console.error(`\n❌ === TOS CONTRACT VIOLATION ===`);
+      console.error(`   Required: ${requiredTotal}, Generated: ${normalizedQuestions.length}`);
+      console.error(`   Shortfall: ${finalShortfall} questions`);
+      console.error(`   After ${completionAttempts} repair attempts, could not reach required count.`);
+      
+      // Return error response instead of incomplete test
+      throw new Error(
+        `Test generation incomplete: generated ${normalizedQuestions.length}/${requiredTotal} questions. ` +
+        `${finalShortfall} questions could not be generated after ${completionAttempts} retry attempts. ` +
+        `Please try again or reduce the TOS requirements.`
+      );
+    }
+    
+    // Trim to exact count (in case we generated extra)
+    const trimmedQuestions = normalizedQuestions.slice(0, requiredTotal);
+    
+    // Verify we have exactly the required count
+    if (trimmedQuestions.length !== requiredTotal) {
+      throw new Error(
+        `Final validation failed: expected ${requiredTotal} questions, got ${trimmedQuestions.length}`
+      );
+    }
+    
+    console.log(`\n✅ === TOS CONTRACT SATISFIED ===`);
+    console.log(`   Generated exactly ${trimmedQuestions.length}/${requiredTotal} questions`);
     
     // Calculate statistics by question type
     const typeCounts = {
@@ -1822,7 +1948,6 @@ serve(async (req) => {
     console.log(`   Essay: ${typeCounts.essay} (${typeCounts.essay * POINTS.essay} pts)`);
     console.log(`   Total Points: ${totalPoints}`);
     console.log(`   (Note: Secondary type used: ${secondaryTypeUsed === 'true_false' ? 'True/False' : secondaryTypeUsed === 'short_answer' ? 'Short Answer' : 'None'})`);
-
 
     const stats = {
       total_generated: trimmedQuestions.length,

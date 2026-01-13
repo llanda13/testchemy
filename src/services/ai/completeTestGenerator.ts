@@ -112,14 +112,68 @@ export class CompleteTestGenerator {
     console.log(`   - Existing: ${totalExisting}`);
     console.log(`   - AI Generated: ${totalAIGenerated}`);
 
+    // ============= COMPLETION GATE: Enforce exact TOS count =============
+    const requiredTotal = requirements.reduce((sum, req) => sum + req.count, 0);
+    let completionAttempts = 0;
+    const MAX_COMPLETION_ATTEMPTS = 3;
+
+    while (allSelectedQuestions.length < requiredTotal && completionAttempts < MAX_COMPLETION_ATTEMPTS) {
+      completionAttempts++;
+      const shortfall = requiredTotal - allSelectedQuestions.length;
+      
+      console.log(`\n🔄 === COMPLETION GATE RETRY ${completionAttempts}/${MAX_COMPLETION_ATTEMPTS} ===`);
+      console.log(`   📊 Current: ${allSelectedQuestions.length}/${requiredTotal} (need ${shortfall} more)`);
+      
+      // Generate repair questions for the shortfall
+      try {
+        const repairReq = requirements[completionAttempts % requirements.length] || requirements[0];
+        
+        console.log(`   🤖 Generating ${shortfall} repair questions for ${repairReq.topic}...`);
+        
+        const repairQuestions = await this.generateMissingQuestions(
+          repairReq.topic,
+          repairReq.bloom_level as BloomLevel,
+          repairReq.difficulty as Difficulty,
+          shortfall,
+          user.id
+        );
+        
+        if (repairQuestions.length > 0) {
+          const savedRepair = await this.saveAIQuestions(repairQuestions, user.id, testMetadata.tos_id);
+          allSelectedQuestions.push(...savedRepair);
+          totalAIGenerated += savedRepair.length;
+          console.log(`   ✅ Added ${savedRepair.length} repair questions`);
+        }
+      } catch (error) {
+        console.error(`   ❌ Repair attempt ${completionAttempts} failed:`, error);
+      }
+      
+      console.log(`   📊 New total: ${allSelectedQuestions.length}/${requiredTotal}`);
+    }
+
+    // Final validation: TOS contract must be satisfied
+    if (allSelectedQuestions.length < requiredTotal) {
+      const shortfall = requiredTotal - allSelectedQuestions.length;
+      console.error(`❌ TOS CONTRACT VIOLATION: ${allSelectedQuestions.length}/${requiredTotal} questions`);
+      throw new Error(
+        `Test generation incomplete: generated ${allSelectedQuestions.length}/${requiredTotal} questions. ` +
+        `${shortfall} questions could not be generated. Please try again.`
+      );
+    }
+
     if (allSelectedQuestions.length === 0) {
       throw new Error("No questions could be generated or selected");
     }
 
+    // Trim to exact count if we have extras
+    const finalQuestions = allSelectedQuestions.slice(0, requiredTotal);
+    
+    console.log(`✅ TOS CONTRACT SATISFIED: ${finalQuestions.length}/${requiredTotal} questions`);
+
     // STEP 4: Generate Final Test Paper
     const testId = await this.assembleFinalTest(
       testTitle,
-      allSelectedQuestions,
+      finalQuestions,
       testMetadata,
       user.id
     );
@@ -128,7 +182,7 @@ export class CompleteTestGenerator {
 
     return {
       testId,
-      totalQuestions: allSelectedQuestions.length,
+      totalQuestions: finalQuestions.length,
       aiGeneratedCount: totalAIGenerated,
       existingQuestionsCount: totalExisting,
       missingRequirements: stillMissing

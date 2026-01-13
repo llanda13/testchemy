@@ -136,14 +136,69 @@ export async function generateCompleteTestFromTOS(
   console.log(`   - Existing: ${existingCount}`);
   console.log(`   - AI Generated: ${aiGeneratedCount}`);
 
+  // ============= COMPLETION GATE: Enforce exact TOS count =============
+  const requiredTotal = criteria.reduce((sum, c) => sum + c.count, 0);
+  let completionAttempts = 0;
+  const MAX_COMPLETION_ATTEMPTS = 3;
+
+  while (allQuestions.length < requiredTotal && completionAttempts < MAX_COMPLETION_ATTEMPTS) {
+    completionAttempts++;
+    const shortfall = requiredTotal - allQuestions.length;
+    
+    console.log(`\n🔄 === COMPLETION GATE RETRY ${completionAttempts}/${MAX_COMPLETION_ATTEMPTS} ===`);
+    console.log(`   📊 Current: ${allQuestions.length}/${requiredTotal} (need ${shortfall} more)`);
+    
+    // Generate repair questions for the shortfall
+    try {
+      // Distribute shortfall across random criteria
+      const repairCriteria = criteria.filter(c => c.count > 0);
+      const repairTopic = repairCriteria[completionAttempts % repairCriteria.length] || criteria[0];
+      
+      console.log(`   🤖 Generating ${shortfall} repair questions for ${repairTopic.topic}...`);
+      
+      const repairQuestions = await generateAIQuestions(
+        repairTopic.topic,
+        repairTopic.bloomLevel,
+        repairTopic.difficulty,
+        shortfall
+      );
+      
+      if (repairQuestions.length > 0) {
+        const savedRepair = await saveAIQuestionsToBank(repairQuestions, user.id, tosId);
+        allQuestions.push(...savedRepair);
+        aiGeneratedCount += savedRepair.length;
+        console.log(`   ✅ Added ${savedRepair.length} repair questions`);
+      }
+    } catch (error) {
+      console.error(`   ❌ Repair attempt ${completionAttempts} failed:`, error);
+    }
+    
+    console.log(`   📊 New total: ${allQuestions.length}/${requiredTotal}`);
+  }
+
+  // Final validation: TOS contract must be satisfied
+  if (allQuestions.length < requiredTotal) {
+    const shortfall = requiredTotal - allQuestions.length;
+    console.error(`❌ TOS CONTRACT VIOLATION: ${allQuestions.length}/${requiredTotal} questions`);
+    throw new Error(
+      `Test generation incomplete: generated ${allQuestions.length}/${requiredTotal} questions. ` +
+      `${shortfall} questions could not be generated. Please try again.`
+    );
+  }
+
   if (allQuestions.length === 0) {
     throw new Error("No questions could be generated or selected");
   }
 
+  // Trim to exact count if we have extras
+  const finalQuestions = allQuestions.slice(0, requiredTotal);
+  
+  console.log(`✅ TOS CONTRACT SATISFIED: ${finalQuestions.length}/${requiredTotal} questions`);
+
   // STEP 8: Assemble and save final test
   const testId = await assembleFinalTest(
     testData.title,
-    allQuestions,
+    finalQuestions,
     testData,
     user.id,
     tosId
