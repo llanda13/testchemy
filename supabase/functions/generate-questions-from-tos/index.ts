@@ -639,18 +639,20 @@ function validateBloomEnforcement(
   questionText: string,
   bloomLevel: string
 ): { valid: boolean; reason?: string } {
-  const config = BLOOM_COGNITIVE_OPERATIONS[bloomLevel.toLowerCase()];
+  const config = BLOOM_COGNITIVE_OPERATIONS_ENHANCED[bloomLevel.toLowerCase()];
   if (!config) return { valid: true };
   
   const lowerText = questionText.toLowerCase();
   
   // Check for forbidden patterns (e.g., "key factors include" for higher-order blooms)
-  for (const pattern of config.forbiddenPatterns) {
-    if (pattern.test(questionText)) {
-      return {
-        valid: false,
-        reason: `Question uses forbidden pattern for ${bloomLevel} level: ${pattern.toString()}`
-      };
+  if (config.forbiddenPatterns && Array.isArray(config.forbiddenPatterns)) {
+    for (const pattern of config.forbiddenPatterns) {
+      if (pattern.test(questionText)) {
+        return {
+          valid: false,
+          reason: `Question uses forbidden pattern for ${bloomLevel} level: ${pattern.toString()}`
+        };
+      }
     }
   }
   
