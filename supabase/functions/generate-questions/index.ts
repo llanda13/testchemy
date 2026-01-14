@@ -6,6 +6,124 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ============================================
+// INPUT VALIDATION UTILITIES
+// ============================================
+
+// Valid enum values for strict validation
+const VALID_BLOOM_LEVELS = ['Remembering', 'Understanding', 'Applying', 'Analyzing', 'Evaluating', 'Creating'];
+const VALID_DIFFICULTIES = ['Easy', 'Average', 'Difficult'];
+
+// UUID v4 regex pattern
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// Validation limits
+const MAX_TOPIC_LENGTH = 500;
+const MAX_COUNT = 20;
+const MIN_COUNT = 1;
+const MAX_REQUEST_SIZE = 50000; // 50KB max request size
+
+/**
+ * Validate UUID format
+ */
+function isValidUUID(value: string): boolean {
+  return typeof value === 'string' && UUID_REGEX.test(value);
+}
+
+/**
+ * Sanitize string input - remove potentially dangerous characters
+ */
+function sanitizeString(input: string, maxLength: number): string {
+  if (typeof input !== 'string') return '';
+  return input
+    .trim()
+    .slice(0, maxLength)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove script tags
+    .replace(/javascript:/gi, '') // Remove javascript: protocol
+    .replace(/on\w+\s*=/gi, ''); // Remove event handlers
+}
+
+/**
+ * Validate and sanitize the generation request
+ */
+function validateGenerationRequest(body: unknown): { 
+  valid: boolean; 
+  error?: string; 
+  data?: { tos_id: string; request: { topic: string; bloom_level: string; difficulty: string; count: number } } 
+} {
+  if (!body || typeof body !== 'object') {
+    return { valid: false, error: 'Invalid request body: expected an object' };
+  }
+
+  const { tos_id, request } = body as Record<string, unknown>;
+
+  // Validate tos_id
+  if (!tos_id || typeof tos_id !== 'string') {
+    return { valid: false, error: 'Missing or invalid tos_id: must be a string' };
+  }
+  if (!isValidUUID(tos_id)) {
+    return { valid: false, error: 'Invalid tos_id: must be a valid UUID' };
+  }
+
+  // Validate request object
+  if (!request || typeof request !== 'object') {
+    return { valid: false, error: 'Missing or invalid request: must be an object' };
+  }
+
+  const { topic, bloom_level, difficulty, count } = request as Record<string, unknown>;
+
+  // Validate topic
+  if (!topic || typeof topic !== 'string') {
+    return { valid: false, error: 'Missing or invalid topic: must be a string' };
+  }
+  if (topic.trim().length < 2) {
+    return { valid: false, error: 'Topic is too short: minimum 2 characters' };
+  }
+  if (topic.length > MAX_TOPIC_LENGTH) {
+    return { valid: false, error: `Topic is too long: maximum ${MAX_TOPIC_LENGTH} characters` };
+  }
+
+  // Validate bloom_level against allowed enum values
+  if (!bloom_level || typeof bloom_level !== 'string') {
+    return { valid: false, error: 'Missing or invalid bloom_level: must be a string' };
+  }
+  if (!VALID_BLOOM_LEVELS.includes(bloom_level)) {
+    return { valid: false, error: `Invalid bloom_level: must be one of ${VALID_BLOOM_LEVELS.join(', ')}` };
+  }
+
+  // Validate difficulty against allowed enum values
+  if (!difficulty || typeof difficulty !== 'string') {
+    return { valid: false, error: 'Missing or invalid difficulty: must be a string' };
+  }
+  if (!VALID_DIFFICULTIES.includes(difficulty)) {
+    return { valid: false, error: `Invalid difficulty: must be one of ${VALID_DIFFICULTIES.join(', ')}` };
+  }
+
+  // Validate count
+  const parsedCount = typeof count === 'number' ? count : (count === undefined ? 5 : parseInt(String(count), 10));
+  if (isNaN(parsedCount) || parsedCount < MIN_COUNT || parsedCount > MAX_COUNT) {
+    return { valid: false, error: `Invalid count: must be a number between ${MIN_COUNT} and ${MAX_COUNT}` };
+  }
+
+  return {
+    valid: true,
+    data: {
+      tos_id: tos_id,
+      request: {
+        topic: sanitizeString(topic, MAX_TOPIC_LENGTH),
+        bloom_level: bloom_level,
+        difficulty: difficulty,
+        count: parsedCount
+      }
+    }
+  };
+}
+
+// ============================================
+// BLOOM TAXONOMY CONFIGURATION
+// ============================================
+
 /**
  * HIGHER ORDER BLOOM LEVELS - These FORBID generic listing
  */
@@ -51,6 +169,10 @@ function shouldRejectAnswer(answerType: string, answer: string, bloomLevel: stri
   return false;
 }
 
+// ============================================
+// MAIN HANDLER
+// ============================================
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -62,17 +184,38 @@ serve(async (req) => {
   let errorType = '';
 
   try {
-    const { tos_id, request } = await req.json();
-    
-    // Validate input
-    if (!tos_id || !request) {
+    // Check request size
+    const contentLength = req.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > MAX_REQUEST_SIZE) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: tos_id and request' }),
+        JSON.stringify({ error: `Request too large: maximum ${MAX_REQUEST_SIZE} bytes` }),
+        { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Parse request body
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch (parseError) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON in request body' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const { topic, bloom_level, difficulty, count = 5 } = request;
+    // Validate and sanitize input
+    const validation = validateGenerationRequest(body);
+    if (!validation.valid || !validation.data) {
+      console.error('Validation error:', validation.error);
+      return new Response(
+        JSON.stringify({ error: validation.error }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { tos_id, request: validatedRequest } = validation.data;
+    const { topic, bloom_level, difficulty, count } = validatedRequest;
 
     console.log('Generating questions for:', { tos_id, topic, bloom_level, difficulty, count });
 
