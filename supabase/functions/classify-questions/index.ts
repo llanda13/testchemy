@@ -7,125 +7,6 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
 };
 
-// ============================================
-// INPUT VALIDATION UTILITIES
-// ============================================
-
-// Valid question types
-const VALID_QUESTION_TYPES = ['mcq', 'true_false', 'essay', 'short_answer'] as const;
-
-// Validation limits
-const MAX_TEXT_LENGTH = 5000;
-const MAX_TOPIC_LENGTH = 500;
-const MAX_ARRAY_LENGTH = 100;
-const MAX_REQUEST_SIZE = 100000; // 100KB max request size
-
-/**
- * Sanitize string input - remove potentially dangerous characters
- */
-function sanitizeString(input: string, maxLength: number): string {
-  if (typeof input !== 'string') return '';
-  return input
-    .trim()
-    .slice(0, maxLength)
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove script tags
-    .replace(/javascript:/gi, '') // Remove javascript: protocol
-    .replace(/on\w+\s*=/gi, ''); // Remove event handlers
-}
-
-/**
- * Validate a single classification input item
- */
-function validateClassificationItem(item: unknown, index: number): { 
-  valid: boolean; 
-  error?: string; 
-  data?: ClassificationInput 
-} {
-  if (!item || typeof item !== 'object') {
-    return { valid: false, error: `Item at index ${index} must be an object` };
-  }
-
-  const { text, type, topic } = item as Record<string, unknown>;
-
-  // Validate text
-  if (!text || typeof text !== 'string') {
-    return { valid: false, error: `Item at index ${index}: "text" must be a non-empty string` };
-  }
-  if (text.trim().length < 3) {
-    return { valid: false, error: `Item at index ${index}: "text" is too short (minimum 3 characters)` };
-  }
-  if (text.length > MAX_TEXT_LENGTH) {
-    return { valid: false, error: `Item at index ${index}: "text" exceeds maximum length of ${MAX_TEXT_LENGTH} characters` };
-  }
-
-  // Validate type
-  if (!type || typeof type !== 'string') {
-    return { valid: false, error: `Item at index ${index}: "type" must be a string` };
-  }
-  if (!VALID_QUESTION_TYPES.includes(type as typeof VALID_QUESTION_TYPES[number])) {
-    return { valid: false, error: `Item at index ${index}: "type" must be one of: ${VALID_QUESTION_TYPES.join(', ')}` };
-  }
-
-  // Validate optional topic
-  let sanitizedTopic: string | undefined;
-  if (topic !== undefined) {
-    if (typeof topic !== 'string') {
-      return { valid: false, error: `Item at index ${index}: "topic" must be a string if provided` };
-    }
-    if (topic.length > MAX_TOPIC_LENGTH) {
-      return { valid: false, error: `Item at index ${index}: "topic" exceeds maximum length of ${MAX_TOPIC_LENGTH} characters` };
-    }
-    sanitizedTopic = sanitizeString(topic, MAX_TOPIC_LENGTH);
-  }
-
-  return {
-    valid: true,
-    data: {
-      text: sanitizeString(text, MAX_TEXT_LENGTH),
-      type: type as ClassificationInput['type'],
-      topic: sanitizedTopic
-    }
-  };
-}
-
-/**
- * Validate the entire classification request
- */
-function validateClassificationRequest(payload: unknown): {
-  valid: boolean;
-  error?: string;
-  data?: ClassificationInput[];
-} {
-  if (!Array.isArray(payload)) {
-    return { valid: false, error: 'Expected array of classification inputs' };
-  }
-
-  if (payload.length === 0) {
-    return { valid: false, error: 'Empty array provided' };
-  }
-
-  if (payload.length > MAX_ARRAY_LENGTH) {
-    return { valid: false, error: `Array exceeds maximum length of ${MAX_ARRAY_LENGTH} items` };
-  }
-
-  const validatedItems: ClassificationInput[] = [];
-
-  for (let i = 0; i < payload.length; i++) {
-    const validation = validateClassificationItem(payload[i], i);
-    if (!validation.valid || !validation.data) {
-      return { valid: false, error: validation.error };
-    }
-    validatedItems.push(validation.data);
-  }
-
-  return { valid: true, data: validatedItems };
-}
-
-// ============================================
-// TYPE DEFINITIONS
-// ============================================
-
 type ClassificationInput = {
   text: string;
   type: 'mcq' | 'true_false' | 'essay' | 'short_answer';
@@ -371,17 +252,9 @@ serve(async (req) => {
   let errorType = '';
 
   try {
-    // Check request size
-    const contentLength = req.headers.get('content-length');
-    if (contentLength && parseInt(contentLength, 10) > MAX_REQUEST_SIZE) {
-      return new Response(
-        JSON.stringify({ error: `Request too large: maximum ${MAX_REQUEST_SIZE} bytes` }),
-        { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Parse request body
-    let rawPayload: unknown;
+    // Parse and validate request body
+    let payload: ClassificationInput[];
+    
     try {
       const body = await req.text();
       console.log('Received body:', body ? body.substring(0, 200) : 'empty');
@@ -390,21 +263,30 @@ serve(async (req) => {
         throw new Error('Request body is empty');
       }
       
-      rawPayload = JSON.parse(body);
+      payload = JSON.parse(body);
     } catch (parseError) {
       const message = parseError instanceof Error ? parseError.message : 'Invalid JSON';
       console.error('JSON parse error:', message);
       throw new Error(`Invalid request body: ${message}`);
     }
-
-    // Validate and sanitize input
-    const validation = validateClassificationRequest(rawPayload);
-    if (!validation.valid || !validation.data) {
-      console.error('Validation error:', validation.error);
-      throw new Error(validation.error);
+    
+    if (!Array.isArray(payload)) {
+      throw new Error('Expected array of classification inputs');
     }
-
-    const payload = validation.data;
+    
+    if (payload.length === 0) {
+      throw new Error('Empty array provided');
+    }
+    
+    // Validate each input
+    for (const item of payload) {
+      if (!item.text || typeof item.text !== 'string') {
+        throw new Error('Each item must have a "text" field');
+      }
+      if (!item.type || !['mcq', 'true_false', 'essay', 'short_answer'].includes(item.type)) {
+        throw new Error('Each item must have a valid "type" field');
+      }
+    }
 
     const results: ClassificationOutput[] = payload.map(({ text, type, topic }) => {
       const { bloom_level, knowledge_dimension, confidence } = guessBloomAndKD(text, type);
