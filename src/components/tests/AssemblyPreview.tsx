@@ -10,8 +10,7 @@ interface AssemblyPreviewProps {
 }
 
 export function AssemblyPreview({ result }: AssemblyPreviewProps) {
-  const selectedQuestions = result?.selectedQuestions || [];
-  const metadata = result?.metadata || { warnings: [], constraintsSatisfied: false, balanceScore: 0, coverageScore: 0 };
+  const { selectedQuestions, metadata } = result;
 
   // Calculate distributions
   const topicCounts: Record<string, number> = {};
@@ -27,17 +26,16 @@ export function AssemblyPreview({ result }: AssemblyPreviewProps) {
   });
 
   const total = selectedQuestions.length;
-  const warnings = metadata.warnings || [];
 
   return (
     <div className="space-y-6">
       {/* Warnings */}
-      {warnings.length > 0 && (
+      {metadata.warnings.length > 0 && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
             <ul className="list-disc list-inside space-y-1">
-              {warnings.map((warning, i) => (
+              {metadata.warnings.map((warning, i) => (
                 <li key={i}>{warning}</li>
               ))}
             </ul>
@@ -46,7 +44,7 @@ export function AssemblyPreview({ result }: AssemblyPreviewProps) {
       )}
 
       {/* Success indicators */}
-      {metadata.constraintsSatisfied && warnings.length === 0 && (
+      {metadata.constraintsSatisfied && metadata.warnings.length === 0 && (
         <Alert>
           <CheckCircle2 className="h-4 w-4 text-success" />
           <AlertDescription>
