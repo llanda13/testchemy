@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -21,7 +21,7 @@ import { buildTestConfigFromTOS } from "@/utils/testVersions";
 import { SufficiencyAnalysisPanel } from "@/components/analysis/SufficiencyAnalysisPanel";
 import { generateTestFromTOS, TOSCriteria } from "@/services/ai/testGenerationService";
 import { analyzeTOSSufficiency } from "@/services/analysis/sufficiencyAnalysis";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { 
   calculateCanonicalTOSMatrix, 
   validateTOSMatrix, 
@@ -30,6 +30,8 @@ import {
   BLOOM_DISTRIBUTION,
   getDifficultyForBloom
 } from "@/utils/tosCalculator";
+import { ExamFormatSelector, SelectedFormatSummary } from "@/components/generation/ExamFormatSelector";
+import { EXAM_FORMATS, getDefaultFormat, getExamFormat } from "@/types/examFormats";
 
 const topicSchema = z.object({
   topic: z.string().min(1, "Topic name is required"),
@@ -57,6 +59,9 @@ interface TOSBuilderProps {
 
 export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const templateApplied = useRef(false);
+  
   const [topics, setTopics] = useState([{ topic: "", hours: 0 }]);
   const [tosMatrix, setTosMatrix] = useState<CanonicalTOSMatrix | null>(null);
   const [showMatrix, setShowMatrix] = useState(false);
@@ -66,6 +71,7 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStatus, setGenerationStatus] = useState("");
   const [collaborators, setCollaborators] = useState<any[]>([]);
+  const [selectedFormatId, setSelectedFormatId] = useState(getDefaultFormat().id);
 
   // Real-time collaboration setup
   const { users: presenceUsers, isConnected } = usePresence('tos-builder', {
@@ -93,7 +99,77 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
     }
   });
 
-  const { register, handleSubmit, formState: { errors }, setValue, watch } = form;
+  const { register, handleSubmit, formState: { errors }, setValue, watch, reset } = form;
+
+  // Apply template data when navigated with state
+  useEffect(() => {
+    const state = location.state as { templateData?: any; isReusing?: boolean } | null;
+    
+    if (state?.templateData && state?.isReusing && !templateApplied.current) {
+      templateApplied.current = true;
+      const template = state.templateData;
+      
+      console.log("📋 Loading TOS template:", template);
+      
+      // Parse topics from template
+      let parsedTopics: { topic: string; hours: number }[] = [{ topic: "", hours: 0 }];
+      
+      if (template.topics) {
+        if (Array.isArray(template.topics)) {
+          // Topics is an array format
+          parsedTopics = template.topics.map((t: any) => ({
+            topic: t.topic || t.name || "",
+            hours: t.hours || 0
+          }));
+        } else if (typeof template.topics === 'object') {
+          // Topics might be an object with topic names as keys
+          parsedTopics = Object.entries(template.topics).map(([name, data]: [string, any]) => ({
+            topic: name,
+            hours: typeof data === 'object' ? (data.hours || 0) : 0
+          }));
+        }
+      } else if (template.distribution && typeof template.distribution === 'object') {
+        // Try to extract topics from distribution if topics array is missing
+        parsedTopics = Object.keys(template.distribution).map(topicName => ({
+          topic: topicName,
+          hours: template.distribution[topicName]?.hours || 3
+        }));
+      }
+      
+      // Ensure at least one topic
+      if (parsedTopics.length === 0) {
+        parsedTopics = [{ topic: "", hours: 0 }];
+      }
+      
+      // Update topics state
+      setTopics(parsedTopics);
+      
+      // Apply all form values
+      reset({
+        subject_no: template.subject_no || "",
+        course: template.course || "",
+        description: template.description || "",
+        year_section: template.year_section || "",
+        exam_period: template.exam_period || "",
+        school_year: template.school_year || "",
+        total_items: template.total_items || 50,
+        prepared_by: template.prepared_by || "",
+        noted_by: template.noted_by || "",
+        topics: parsedTopics
+      });
+      
+      console.log("✅ Template applied successfully:", {
+        subject_no: template.subject_no,
+        course: template.course,
+        totalItems: template.total_items,
+        topicsCount: parsedTopics.length
+      });
+      
+      toast.success("Template Loaded", {
+        description: `Loaded "${template.subject_no || template.course}" template with ${parsedTopics.length} topic(s). Update the details for your new exam.`,
+      });
+    }
+  }, [location.state, reset]);
 
   const watchedTotalItems = watch("total_items");
 
@@ -389,6 +465,23 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
           <SufficiencyAnalysisPanel analysis={sufficiencyAnalysis} />
         )}
         
+        {/* Exam Format Selection */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5" />
+              Exam Format
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ExamFormatSelector 
+              value={selectedFormatId} 
+              onChange={setSelectedFormatId}
+              totalItems={tosMatrix.total_items}
+            />
+          </CardContent>
+        </Card>
+
         {/* Generate Test Section */}
         <Card className="mt-6">
           <CardHeader>
@@ -398,11 +491,18 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
-            <div className="text-center space-y-4">
-              <p className="text-muted-foreground">
-                Generate a complete test with multiple versions based on this TOS matrix. 
-                The system will use existing approved questions and generate AI questions for any gaps.
-              </p>
+            <div className="space-y-6">
+              <div className="text-center">
+                <p className="text-muted-foreground">
+                  Generate a complete multi-section test based on this TOS matrix and selected format.
+                  The system will use existing approved questions and generate AI questions for any gaps.
+                </p>
+              </div>
+              
+              {/* Selected Format Summary */}
+              <div className="max-w-md mx-auto">
+                <SelectedFormatSummary formatId={selectedFormatId} />
+              </div>
               
               {isGeneratingTest && (
                 <div className="space-y-2">
@@ -414,24 +514,26 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
                 </div>
               )}
               
-              <Button
-                variant="default"
-                size="lg"
-                className="px-8 py-3"
-                onClick={handleGenerateTest}
-                disabled={isGeneratingTest || isAnalyzing}
-              >
-                {isGeneratingTest ? (
-                  <>
-                    <Brain className="w-5 h-5 mr-2 animate-spin" />
-                    {generationStatus || 'Generating Test...'}
-                  </>
-                ) : (
-                  <>
-                    🧠 Generate Complete Test from TOS
-                  </>
-                )}
-              </Button>
+              <div className="text-center">
+                <Button
+                  variant="default"
+                  size="lg"
+                  className="px-8 py-3"
+                  onClick={handleGenerateTest}
+                  disabled={isGeneratingTest || isAnalyzing}
+                >
+                  {isGeneratingTest ? (
+                    <>
+                      <Brain className="w-5 h-5 mr-2 animate-spin" />
+                      {generationStatus || 'Generating Test...'}
+                    </>
+                  ) : (
+                    <>
+                      🧠 Generate Multi-Section Test
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
