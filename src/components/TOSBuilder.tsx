@@ -19,7 +19,8 @@ import { useRealtime } from "@/hooks/useRealtime";
 import { usePresence } from "@/hooks/usePresence";
 import { buildTestConfigFromTOS } from "@/utils/testVersions";
 import { SufficiencyAnalysisPanel } from "@/components/analysis/SufficiencyAnalysisPanel";
-import { generateTestFromTOS, TOSCriteria } from "@/services/ai/testGenerationService";
+import { TOSCriteria } from "@/services/ai/testGenerationService";
+import { generateFormatAwareTest } from "@/services/ai/formatAwareTestGeneration";
 import { analyzeTOSSufficiency } from "@/services/analysis/sufficiencyAnalysis";
 import { useNavigate, useLocation } from "react-router-dom";
 import { 
@@ -403,10 +404,9 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
       }
       
       setGenerationProgress(40);
-      setGenerationStatus("Querying question bank and generating AI questions...");
+      setGenerationStatus("Querying question bank and generating questions...");
       
-      const testData = {
-        title: tosMatrix.title,
+      const testMetadata = {
         subject: tosMatrix.subject_no || tosMatrix.course,
         course: tosMatrix.course,
         year_section: tosMatrix.year_section,
@@ -415,18 +415,29 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
         tos_id: savedTOSId,
       };
 
-      const result = await generateTestFromTOS(criteria, testData.title, testData);
+      // Use format-aware generation for all formats
+      const selectedFormat = getExamFormat(selectedFormatId) || getDefaultFormat();
       
+      console.log("📋 Using exam format:", selectedFormat.name);
+      console.log("📊 Total criteria items:", criteria.reduce((s, c) => s + c.count, 0));
+      
+      const formatResult = await generateFormatAwareTest({
+        format: selectedFormat,
+        tosCriteria: criteria,
+        testTitle: tosMatrix.title,
+        testMetadata,
+      });
+
       setGenerationProgress(90);
       setGenerationStatus("Test saved successfully!");
       
       setGenerationProgress(100);
       setGenerationStatus("Redirecting to test preview...");
       
-      toast.success(`Successfully generated test!`);
+      toast.success(`Successfully generated ${formatResult.totalItems}-item test with ${selectedFormat.sections.length} section(s)!`);
       
       setTimeout(() => {
-        navigate(`/teacher/generated-test/${result.id}`);
+        navigate(`/teacher/generated-test/${formatResult.id}`);
       }, 500);
       
     } catch (error) {
