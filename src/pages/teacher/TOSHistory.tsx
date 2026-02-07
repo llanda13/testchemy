@@ -95,8 +95,8 @@ export default function TOSHistory() {
   };
 
   const handleViewTOS = (tosId: string) => {
-    // Navigate to TOS view/edit page
-    navigate(`/teacher/tos/${tosId}`);
+    // Navigate to the TOS view page (read-only preview with print/export)
+    navigate(`/teacher/tos-view/${tosId}`);
   };
 
   const filteredEntries = tosEntries.filter(tos => {
