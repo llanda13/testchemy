@@ -14,10 +14,11 @@ import PendingApprovals from "./pages/admin/PendingApprovals";
 import BulkImportPage from "./pages/admin/BulkImportPage";
 import UserManagement from "./pages/admin/UserManagement";
 import AdminAnalytics from "./pages/admin/Analytics";
+import RecentlyDeleted from "./pages/admin/RecentlyDeleted";
 import AdminSettings from "./pages/admin/Settings";
 import AILogs from "./pages/admin/AILogs";
 import TOSPage from "./pages/teacher/TOSPage";
-import IntelligentTestGenerator from "./pages/teacher/IntelligentTestGenerator";
+
 import MyTests from "./pages/teacher/MyTests";
 import TestPreview from "./pages/teacher/TestPreview";
 import GeneratedTestPage from "./pages/teacher/GeneratedTestPage";
@@ -27,6 +28,7 @@ import TOSViewPage from "./pages/teacher/TOSViewPage";
 import TeacherReports from "./pages/teacher/Reports";
 import TeacherSettings from "./pages/teacher/Settings";
 import ProfessionalExport from "./pages/ProfessionalExport";
+import AIAssistant from "./pages/AIAssistant";
 import Tests from "./pages/Tests";
 import Collaboration from "./pages/Collaboration";
 import Quality from "./pages/Quality";
@@ -34,6 +36,7 @@ import TestAssembly from "./pages/TestAssembly";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AdminLayout } from "./components/layout/AdminLayout";
 import { TeacherLayout } from "./components/layout/TeacherLayout";
+import QuestionBankView from "./pages/teacher/QuestionBankView";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -67,7 +70,8 @@ const App = () => {
                         <Route path="bulk-import" element={<BulkImportPage />} />
                         <Route path="users" element={<UserManagement />} />
                         <Route path="analytics" element={<AdminAnalytics />} />
-                        <Route path="generate-test" element={<IntelligentTestGenerator />} />
+                        <Route path="recently-deleted" element={<RecentlyDeleted />} />
+                        <Route path="ai-assistant" element={<AIAssistant />} />
                         <Route path="ai-logs" element={<AILogs />} />
                         <Route path="quality" element={<Quality />} />
                         <Route path="test-assembly" element={<TestAssembly />} />
@@ -90,7 +94,8 @@ const App = () => {
                         <Route index element={<Navigate to="/teacher/dashboard" replace />} />
                         <Route path="dashboard" element={<TeacherDashboard />} />
                         <Route path="tos" element={<TOSPage />} />
-                        <Route path="generate-test" element={<IntelligentTestGenerator />} />
+                        
+                        <Route path="ai-assistant" element={<AIAssistant />} />
                         <Route path="my-tests" element={<MyTests />} />
                         <Route path="test/:testId" element={<TestPreview />} />
                         <Route path="generated-test/:testId" element={<GeneratedTestPage />} />
@@ -103,6 +108,7 @@ const App = () => {
                         <Route path="export" element={<ProfessionalExport />} />
                         <Route path="tests" element={<Tests />} />
                         <Route path="collaboration" element={<Collaboration />} />
+                        <Route path="question-bank" element={<QuestionBankView />} />
                         <Route path="settings" element={<TeacherSettings />} />
                       </Routes>
                     </TeacherLayout>
