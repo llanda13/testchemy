@@ -28,7 +28,7 @@ interface UserSettings {
   };
   profile: {
     fullName: string;
-    institution: string;
+    college: string;
     subject: string;
   };
 }
