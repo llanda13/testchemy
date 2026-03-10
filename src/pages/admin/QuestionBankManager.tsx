@@ -365,11 +365,13 @@ export default function QuestionBankManager() {
         key={q.id}
         className="flex items-start gap-3 p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
       >
-        <Checkbox
-          checked={selectedIds.has(q.id)}
-          onCheckedChange={() => toggleSelect(q.id)}
-          className="mt-1"
-        />
+        {isAdmin && (
+          <Checkbox
+            checked={selectedIds.has(q.id)}
+            onCheckedChange={() => toggleSelect(q.id)}
+            className="mt-1"
+          />
+        )}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-foreground leading-relaxed">
             {q.question_text}
