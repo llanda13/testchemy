@@ -2,6 +2,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { IntelligentQuestionSelector } from "./intelligentSelector";
 import { generateQuestions } from "./generate";
 import type { BloomLevel, Difficulty } from "./classify";
+import { QuestionUniquenessStore, createQuestionFingerprint } from "./questionUniquenessChecker";
+import type { AnswerType, KnowledgeDimension } from "@/types/knowledge";
+import { resolveSubjectMetadata } from "./subjectMetadataResolver";
 
 export interface TOSRequirement {
   topic: string;
@@ -57,6 +60,10 @@ export class CompleteTestGenerator {
     const allSelectedQuestions: any[] = [];
     const stillMissing: TOSRequirement[] = [];
 
+    // Session-level dedup stores
+    const uniquenessStore = new QuestionUniquenessStore();
+    const allQuestionTexts: string[] = [];
+
     // Process each TOS requirement
     for (const req of requirements) {
       console.log(`\n📊 Processing: ${req.topic} | ${req.bloom_level} | ${req.difficulty} | Need: ${req.count}`);
@@ -65,20 +72,35 @@ export class CompleteTestGenerator {
       const existingQuestions = await this.queryExistingQuestions(req);
       console.log(`   ✓ Found ${existingQuestions.length} existing questions`);
 
-      if (existingQuestions.length >= req.count) {
+      // Filter existing questions for uniqueness before selection
+      const dedupedExisting = existingQuestions.filter(q => {
+        const qText = q.question_text || '';
+        if (this.isDuplicateByText(qText, allQuestionTexts)) return false;
+        return true;
+      });
+
+      if (dedupedExisting.length >= req.count) {
         // Sufficient questions exist - use intelligent selection
-        const selected = await this.selector.selectNonRedundant(existingQuestions, req.count);
+        const selected = await this.selector.selectNonRedundant(dedupedExisting, req.count);
+        for (const sq of selected) {
+          allQuestionTexts.push(sq.question_text || '');
+          this.registerFingerprint(uniquenessStore, sq);
+        }
         allSelectedQuestions.push(...selected);
         totalExisting += selected.length;
         console.log(`   ✓ Selected ${selected.length} from existing bank`);
       } else {
         // STEP 2: Activate AI Fallback - Generate missing questions
-        const needed = req.count - existingQuestions.length;
+        const needed = req.count - dedupedExisting.length;
         console.log(`   ⚠️ Missing ${needed} questions - Activating AI Generation`);
 
-        // Use existing questions first
-        allSelectedQuestions.push(...existingQuestions);
-        totalExisting += existingQuestions.length;
+        // Use existing questions first (deduped)
+        for (const eq of dedupedExisting) {
+          allQuestionTexts.push(eq.question_text || '');
+          this.registerFingerprint(uniquenessStore, eq);
+        }
+        allSelectedQuestions.push(...dedupedExisting);
+        totalExisting += dedupedExisting.length;
 
         // Generate missing questions with AI
         const aiGenerated = await this.generateMissingQuestions(
@@ -90,11 +112,25 @@ export class CompleteTestGenerator {
         );
 
         if (aiGenerated.length > 0) {
-          // STEP 3: Save all AI-generated questions to database
-          const savedQuestions = await this.saveAIQuestions(aiGenerated, user.id, testMetadata.tos_id);
+          // Filter AI questions for uniqueness before saving
+          const uniqueAI = aiGenerated.filter(q => {
+            const qText = q.question_text || '';
+            if (this.isDuplicateByText(qText, allQuestionTexts)) {
+              console.log(`   🔄 Rejected duplicate AI question: "${qText.substring(0, 60)}..."`);
+              return false;
+            }
+            return true;
+          });
+
+          // STEP 3: Save only unique AI-generated questions to database
+          const savedQuestions = await this.saveAIQuestions(uniqueAI, user.id, testMetadata.tos_id);
+          for (const sq of savedQuestions) {
+            allQuestionTexts.push(sq.question_text || '');
+            this.registerFingerprint(uniquenessStore, sq);
+          }
           allSelectedQuestions.push(...savedQuestions);
           totalAIGenerated += savedQuestions.length;
-          console.log(`   ✓ Generated and saved ${savedQuestions.length} AI questions`);
+          console.log(`   ✓ Generated and saved ${savedQuestions.length} unique AI questions (${aiGenerated.length - uniqueAI.length} duplicates rejected)`);
         }
 
         // Track any remaining gaps
@@ -190,6 +226,44 @@ export class CompleteTestGenerator {
   }
 
   /**
+   * Text similarity check using token overlap
+   */
+  private isDuplicateByText(text: string, existingTexts: string[], threshold = 0.7): boolean {
+    const tokenize = (t: string) => new Set(
+      t.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(w => w.length > 2)
+    );
+    const set1 = tokenize(text);
+    if (set1.size === 0) return false;
+    for (const existing of existingTexts) {
+      const set2 = tokenize(existing);
+      if (set2.size === 0) continue;
+      let intersection = 0;
+      for (const token of set1) { if (set2.has(token)) intersection++; }
+      if (intersection / Math.max(set1.size, set2.size) >= threshold) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Register a question in the uniqueness fingerprint store
+   */
+  private registerFingerprint(store: QuestionUniquenessStore, q: any): void {
+    const bloomMap: Record<string, string> = {
+      'Remembering': 'definition', 'Understanding': 'explanation', 'Applying': 'application',
+      'Analyzing': 'analysis', 'Evaluating': 'evaluation', 'Creating': 'design'
+    };
+    const answerType = (bloomMap[q.bloom_level] || 'explanation') as AnswerType;
+    const fp = createQuestionFingerprint(
+      q.question_text || '',
+      q.topic || '',
+      answerType,
+      q.bloom_level || 'Understanding',
+      (q.knowledge_dimension || 'conceptual') as KnowledgeDimension
+    );
+    store.register(fp);
+  }
+
+  /**
    * STEP 1: Query existing approved questions
    */
   private async queryExistingQuestions(req: TOSRequirement): Promise<any[]> {
@@ -268,6 +342,39 @@ export class CompleteTestGenerator {
 
     for (const q of questions) {
       try {
+        // Resolve category/specialization/subject metadata
+        const subjectMeta = resolveSubjectMetadata({
+          subject: q.subject,
+          topic: q.topic,
+          subject_code: q.subject_code,
+          subject_description: q.subject_description,
+          category: q.category,
+          specialization: q.specialization,
+        });
+
+        // DB-level dedup: check if a question with matching subject_description exists
+        // If so, align subject_code to the existing record to prevent duplicates
+        if (subjectMeta.subject_description) {
+          const { data: existingSubject } = await supabase
+            .from('questions')
+            .select('subject_code, subject_description, category, specialization')
+            .eq('subject_description', subjectMeta.subject_description)
+            .eq('deleted', false)
+            .limit(1)
+            .maybeSingle();
+
+          if (existingSubject) {
+            // Match found — adopt existing code to prevent duplicates
+            if (existingSubject.subject_code && existingSubject.subject_code !== subjectMeta.subject_code) {
+              console.log(`   🔗 Subject dedup: "${subjectMeta.subject_description}" already exists with code ${existingSubject.subject_code}, adopting it`);
+              subjectMeta.subject_code = existingSubject.subject_code;
+            }
+            // Also adopt category/specialization if they were inferred
+            if (existingSubject.category) subjectMeta.category = existingSubject.category;
+            if (existingSubject.specialization) subjectMeta.specialization = existingSubject.specialization;
+          }
+        }
+
         // Insert into questions table
         const { data: saved, error: insertError } = await supabase
           .from('questions')
@@ -280,6 +387,10 @@ export class CompleteTestGenerator {
             bloom_level: q.bloom_level,
             difficulty: q.difficulty,
             knowledge_dimension: q.knowledge_dimension || 'conceptual',
+            category: subjectMeta.category,
+            specialization: subjectMeta.specialization,
+            subject_code: subjectMeta.subject_code,
+            subject_description: subjectMeta.subject_description,
             created_by: 'ai',
             approved: true,
             status: 'approved',
