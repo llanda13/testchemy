@@ -736,8 +736,8 @@ export default function QuestionBankManager() {
             <QuestionBankReports questions={filteredQuestions} />
           ) : (
             <>
-              {/* Bulk Actions */}
-              {selectedIds.size > 0 && (
+              {/* Bulk Actions - Admin only */}
+              {isAdmin && selectedIds.size > 0 && (
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-muted border">
                   <span className="text-sm font-medium">{selectedIds.size} selected</span>
                   <Separator orientation="vertical" className="h-5" />
