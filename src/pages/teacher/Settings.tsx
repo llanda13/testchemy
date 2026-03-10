@@ -56,7 +56,7 @@ export default function Settings() {
       setLoading(true);
       const { data, error } = await supabase
         .from('profiles')
-        .select('full_name, email, institution, avatar_url')
+        .select('full_name, email, college, avatar_url')
         .eq('id', user?.id)
         .single();
 
@@ -65,7 +65,7 @@ export default function Settings() {
       setProfile({
         full_name: data?.full_name || '',
         email: data?.email || user?.email || '',
-        institution: data?.institution || '',
+        college: data?.college || '',
         avatar_url: data?.avatar_url || ''
       });
     } catch (error) {
