@@ -22,6 +22,7 @@ import {
   getSubjectDescription,
 } from "@/config/questionBankFilters";
 import { QuestionBankReports } from "@/components/admin/QuestionBankReports";
+import { useUserRole } from "@/hooks/useUserRole";
 
 const ALL_BLOOM_LEVELS = ["Remembering", "Understanding", "Applying", "Analyzing", "Evaluating", "Creating"];
 
@@ -63,6 +64,7 @@ export default function QuestionBankManager() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeView, setActiveView] = useState<"questions" | "reports">("questions");
   const queryClient = useQueryClient();
+  const { isAdmin } = useUserRole();
 
   // Cascading filters
   const [filterCategory, setFilterCategory] = useState<string>("all");
@@ -363,11 +365,13 @@ export default function QuestionBankManager() {
         key={q.id}
         className="flex items-start gap-3 p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
       >
-        <Checkbox
-          checked={selectedIds.has(q.id)}
-          onCheckedChange={() => toggleSelect(q.id)}
-          className="mt-1"
-        />
+        {isAdmin && (
+          <Checkbox
+            checked={selectedIds.has(q.id)}
+            onCheckedChange={() => toggleSelect(q.id)}
+            className="mt-1"
+          />
+        )}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-foreground leading-relaxed">
             {q.question_text}
@@ -397,17 +401,21 @@ export default function QuestionBankManager() {
           </div>
         </div>
         <div className="flex gap-1 shrink-0">
-          <Button size="icon" variant="ghost" onClick={() => handleEdit(q)}>
-            <Edit className="h-4 w-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="text-destructive"
-            onClick={() => deleteMutation.mutate(q.id)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {isAdmin && (
+            <>
+              <Button size="icon" variant="ghost" onClick={() => handleEdit(q)}>
+                <Edit className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="text-destructive"
+                onClick={() => deleteMutation.mutate(q.id)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
         </div>
       </div>
     );
@@ -593,8 +601,10 @@ export default function QuestionBankManager() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Question Bank Manager</h1>
-          <p className="text-muted-foreground">Full CRUD access to master question repository</p>
+          <h1 className="text-3xl font-bold">Question Bank{isAdmin ? " Manager" : ""}</h1>
+          <p className="text-muted-foreground">
+            {isAdmin ? "Full CRUD access to master question repository" : "Browse and add questions to the repository"}
+          </p>
         </div>
         <Button onClick={() => setIsCreating(true)} size="lg">
           <Plus className="h-4 w-4 mr-2" />
@@ -603,7 +613,7 @@ export default function QuestionBankManager() {
       </div>
 
       {/* Create/Edit Form */}
-      {(isCreating || editingId) && renderForm()}
+      {(isCreating || (editingId && isAdmin)) && renderForm()}
 
       <div className="flex flex-col lg:flex-row gap-4">
         {/* Left Filter Panel */}
@@ -728,8 +738,8 @@ export default function QuestionBankManager() {
             <QuestionBankReports questions={filteredQuestions} />
           ) : (
             <>
-              {/* Bulk Actions */}
-              {selectedIds.size > 0 && (
+              {/* Bulk Actions - Admin only */}
+              {isAdmin && selectedIds.size > 0 && (
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-muted border">
                   <span className="text-sm font-medium">{selectedIds.size} selected</span>
                   <Separator orientation="vertical" className="h-5" />
@@ -750,10 +760,12 @@ export default function QuestionBankManager() {
               {/* Results count + select all */}
               <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
-                  <Checkbox
-                    checked={filteredQuestions.length > 0 && selectedIds.size === filteredQuestions.length}
-                    onCheckedChange={toggleSelectAll}
-                  />
+                  {isAdmin && (
+                    <Checkbox
+                      checked={filteredQuestions.length > 0 && selectedIds.size === filteredQuestions.length}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                  )}
                   <span>{filteredQuestions.length} questions</span>
                 </div>
               </div>
