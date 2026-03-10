@@ -22,6 +22,7 @@ import {
   getSubjectDescription,
 } from "@/config/questionBankFilters";
 import { QuestionBankReports } from "@/components/admin/QuestionBankReports";
+import { useUserRole } from "@/hooks/useUserRole";
 
 const ALL_BLOOM_LEVELS = ["Remembering", "Understanding", "Applying", "Analyzing", "Evaluating", "Creating"];
 
