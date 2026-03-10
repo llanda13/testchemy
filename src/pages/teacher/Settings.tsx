@@ -26,7 +26,7 @@ function PasswordRequirement({ met, label }: { met: boolean; label: string }) {
 interface ProfileData {
   full_name: string;
   email: string;
-  institution: string;
+  college: string;
   avatar_url: string;
 }
 
