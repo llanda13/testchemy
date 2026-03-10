@@ -189,12 +189,12 @@ const Settings = () => {
                 />
               </div>
               <div>
-                <Label htmlFor="institution">Institution</Label>
+                <Label htmlFor="college">College</Label>
                 <Input
-                  id="institution"
-                  placeholder="e.g., University of Education"
-                  value={settings.profile.institution}
-                  onChange={(e) => updateSettings('profile', 'institution', e.target.value)}
+                  id="college"
+                  placeholder="e.g., College of Education"
+                  value={settings.profile.college}
+                  onChange={(e) => updateSettings('profile', 'college', e.target.value)}
                 />
               </div>
             </div>
