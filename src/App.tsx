@@ -108,7 +108,7 @@ const App = () => {
                         <Route path="export" element={<ProfessionalExport />} />
                         <Route path="tests" element={<Tests />} />
                         <Route path="collaboration" element={<Collaboration />} />
-                        <Route path="question-bank" element={<QuestionBankView />} />
+                        <Route path="question-bank" element={<QuestionBankManager />} />
                         <Route path="settings" element={<TeacherSettings />} />
                       </Routes>
                     </TeacherLayout>
