@@ -84,7 +84,7 @@ export default function Settings() {
         .from('profiles')
         .update({
           full_name: profile.full_name,
-          institution: profile.institution,
+          college: profile.college,
           updated_at: new Date().toISOString()
         })
         .eq('id', user.id);
