@@ -599,8 +599,10 @@ export default function QuestionBankManager() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Question Bank Manager</h1>
-          <p className="text-muted-foreground">Full CRUD access to master question repository</p>
+          <h1 className="text-3xl font-bold">Question Bank{isAdmin ? " Manager" : ""}</h1>
+          <p className="text-muted-foreground">
+            {isAdmin ? "Full CRUD access to master question repository" : "Browse and add questions to the repository"}
+          </p>
         </div>
         <Button onClick={() => setIsCreating(true)} size="lg">
           <Plus className="h-4 w-4 mr-2" />
@@ -609,7 +611,7 @@ export default function QuestionBankManager() {
       </div>
 
       {/* Create/Edit Form */}
-      {(isCreating || editingId) && renderForm()}
+      {(isCreating || (editingId && isAdmin)) && renderForm()}
 
       <div className="flex flex-col lg:flex-row gap-4">
         {/* Left Filter Panel */}
