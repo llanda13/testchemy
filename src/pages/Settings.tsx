@@ -50,7 +50,7 @@ const defaultSettings: UserSettings = {
   },
   profile: {
     fullName: '',
-    institution: '',
+    college: '',
     subject: ''
   }
 };
