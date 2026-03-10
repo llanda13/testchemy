@@ -760,10 +760,12 @@ export default function QuestionBankManager() {
               {/* Results count + select all */}
               <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
-                  <Checkbox
-                    checked={filteredQuestions.length > 0 && selectedIds.size === filteredQuestions.length}
-                    onCheckedChange={toggleSelectAll}
-                  />
+                  {isAdmin && (
+                    <Checkbox
+                      checked={filteredQuestions.length > 0 && selectedIds.size === filteredQuestions.length}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                  )}
                   <span>{filteredQuestions.length} questions</span>
                 </div>
               </div>
