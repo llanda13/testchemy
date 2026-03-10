@@ -41,7 +41,7 @@ export default function Settings() {
   const [profile, setProfile] = useState<ProfileData>({
     full_name: '',
     email: '',
-    institution: '',
+    college: '',
     avatar_url: ''
   });
 
