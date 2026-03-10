@@ -219,7 +219,7 @@ export default function Settings() {
         <CardHeader>
           <CardTitle>Profile Information</CardTitle>
           <CardDescription>
-            Update your personal details. Your institution name will appear on generated TOS and printed outputs.
+            Update your personal details. Your college name will appear on generated TOS and printed outputs.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
