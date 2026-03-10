@@ -147,7 +147,7 @@ export default function Auth() {
               </div>
             </TabsContent>
             
-            <TabsContent value="signup">
+             <TabsContent value="signup">
               <form onSubmit={handleSignUp} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="fullName">Full Name</Label>
@@ -161,9 +161,9 @@ export default function Auth() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="signup-email">Email</Label>
                   <Input
-                    id="email"
+                    id="signup-email"
                     name="email"
                     type="email"
                     placeholder="teacher@school.edu"
@@ -172,9 +172,19 @@ export default function Auth() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+                  <Label htmlFor="college">College</Label>
                   <Input
-                    id="password"
+                    id="college"
+                    name="college"
+                    type="text"
+                    placeholder="e.g. College of Education"
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-password">Password</Label>
+                  <Input
+                    id="signup-password"
                     name="password"
                     type="password"
                     placeholder="Minimum 6 characters"
