@@ -14,6 +14,7 @@ import {
   ChevronRight,
   User,
   BookOpen,
+  Database,
   Menu,
   X,
   Brain
@@ -41,6 +42,12 @@ const teacherMenuItems = [
     href: "/teacher/my-tests", 
     icon: BookOpen,
     description: "View generated tests" 
+  },
+  { 
+    title: "Question Bank", 
+    href: "/teacher/question-bank", 
+    icon: Database,
+    description: "Browse questions" 
   },
   { 
     title: "TOS History", 
