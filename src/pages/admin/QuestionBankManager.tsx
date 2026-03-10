@@ -399,17 +399,21 @@ export default function QuestionBankManager() {
           </div>
         </div>
         <div className="flex gap-1 shrink-0">
-          <Button size="icon" variant="ghost" onClick={() => handleEdit(q)}>
-            <Edit className="h-4 w-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="text-destructive"
-            onClick={() => deleteMutation.mutate(q.id)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {isAdmin && (
+            <>
+              <Button size="icon" variant="ghost" onClick={() => handleEdit(q)}>
+                <Edit className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="text-destructive"
+                onClick={() => deleteMutation.mutate(q.id)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
         </div>
       </div>
     );
