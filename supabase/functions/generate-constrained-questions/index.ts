@@ -1,53 +1,10 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-/**
- * Input Validation Schema - Prevents prompt injection and resource exhaustion
- */
-const RequestSchema = z.object({
-  topic: z.string()
-    .min(3, { message: "Topic must be at least 3 characters" })
-    .max(200, { message: "Topic must not exceed 200 characters" })
-    .transform(val => sanitizeInput(val)),
-  bloom_level: z.enum(
-    ['Remembering', 'Understanding', 'Applying', 'Analyzing', 'Evaluating', 'Creating'],
-    { message: "Invalid bloom_level. Must be one of: Remembering, Understanding, Applying, Analyzing, Evaluating, Creating" }
-  ),
-  knowledge_dimension: z.enum(
-    ['factual', 'conceptual', 'procedural', 'metacognitive'],
-    { message: "Invalid knowledge_dimension. Must be one of: factual, conceptual, procedural, metacognitive" }
-  ),
-  difficulty: z.enum(
-    ['Easy', 'Average', 'Difficult'],
-    { message: "Invalid difficulty. Must be one of: Easy, Average, Difficult" }
-  ).default('Average'),
-  count: z.number()
-    .int({ message: "Count must be an integer" })
-    .min(1, { message: "Count must be at least 1" })
-    .max(20, { message: "Count must not exceed 20" })
-    .default(1),
-  question_type: z.enum(['mcq', 'essay']).default('mcq'),
-  intents: z.array(z.any()).optional(),
-  pipeline_mode: z.string().optional(),
-  registry_snapshot: z.any().optional()
-});
-
-/**
- * Sanitize input to remove potential prompt injection characters
- */
-function sanitizeInput(input: string): string {
-  return input
-    .replace(/[\r\n]+/g, ' ')  // Remove newlines
-    .replace(/[`'"\\]/g, '')    // Remove quotes and backticks
-    .replace(/\s{2,}/g, ' ')    // Collapse multiple spaces
-    .trim();
-}
 
 /**
  * HIGHER ORDER BLOOM LEVELS - These FORBID generic listing
@@ -418,9 +375,109 @@ function buildLegacyPrompt(
   count: number,
   isMCQ: boolean
 ): string {
+  return buildLegacyPromptMultiType(topic, bloomLevel, knowledgeDimension, difficulty, count, isMCQ ? 'mcq' : 'essay');
+}
+
+/**
+ * Build legacy prompt supporting all question types
+ */
+function buildLegacyPromptMultiType(
+  topic: string,
+  bloomLevel: string,
+  knowledgeDimension: string,
+  difficulty: string,
+  count: number,
+  questionType: string
+): string {
   const isHigherOrder = HIGHER_ORDER_BLOOMS.includes(bloomLevel);
   const defaultAnswerType = getDefaultAnswerType(bloomLevel);
   const answerConstraint = buildAnswerConstraint(defaultAnswerType, bloomLevel);
+  
+  let formatSection = '';
+  
+  switch (questionType) {
+    case 'true_false':
+      formatSection = `=== TRUE/FALSE FORMAT ===
+- Each question is a statement that is either TRUE or FALSE
+- Statements must be unambiguous — clearly true or clearly false
+- Avoid double negatives and trick wording
+- Approximately half should be TRUE and half FALSE
+- correct_answer must be exactly "True" or "False"
+
+Return JSON:
+{
+  "questions": [
+    {
+      "text": "Statement text here.",
+      "correct_answer": "True",
+      "answer": "True — explanation of why",
+      "answer_type": "${defaultAnswerType}"
+    }
+  ]
+}`;
+      break;
+    case 'fill_blank':
+    case 'short_answer':
+      formatSection = `=== FILL-IN-THE-BLANK FORMAT ===
+- Each question contains a blank indicated by "__________"
+- The blank should replace ONE key term or short phrase
+- The correct answer must be 1-3 words, clear and specific
+- Avoid blanks that could have multiple valid answers
+
+Return JSON:
+{
+  "questions": [
+    {
+      "text": "The process of __________ ensures quality in ${topic}.",
+      "correct_answer": "validation",
+      "answer": "validation — because it verifies correctness",
+      "answer_type": "${defaultAnswerType}"
+    }
+  ]
+}`;
+      break;
+    case 'essay':
+      formatSection = `=== ESSAY FORMAT ===
+- Open-ended question requiring extended response
+- Should require ${defaultAnswerType} type response
+- Include rubric points for grading
+
+Return JSON:
+{
+  "questions": [
+    {
+      "text": "Essay question text",
+      "rubric_points": ["Point 1", "Point 2", "Point 3"],
+      "correct_answer": "Model answer outline",
+      "answer": "Model answer using ${defaultAnswerType} structure",
+      "answer_type": "${defaultAnswerType}"
+    }
+  ]
+}`;
+      break;
+    default: // mcq
+      formatSection = `=== MCQ REQUIREMENTS ===
+- 4 choices (A, B, C, D)
+- One correct answer
+- Plausible distractors
+- Correct answer must demonstrate ${defaultAnswerType} structure
+
+Return JSON:
+{
+  "questions": [
+    {
+      "text": "Question text",
+      "choices": {"A": "...", "B": "...", "C": "...", "D": "..."},
+      "correct_answer": "A",
+      "answer": "Model answer following ${defaultAnswerType} structure",
+      "answer_type": "${defaultAnswerType}",
+      "bloom_alignment_note": "Alignment with ${bloomLevel}",
+      "knowledge_alignment_note": "Targets ${knowledgeDimension} knowledge"
+    }
+  ]
+}`;
+      break;
+  }
   
   return `Generate ${count} high-quality exam question(s).
 
@@ -452,27 +509,7 @@ These patterns are FORBIDDEN. Your answer must demonstrate actual ${bloomLevel.t
 VIOLATION = REJECTION AND REGENERATION.
 ` : ''}
 
-${isMCQ ? `=== MCQ REQUIREMENTS ===
-- 4 choices (A, B, C, D)
-- One correct answer
-- Plausible distractors
-- Correct answer must demonstrate ${defaultAnswerType} structure` : `=== ESSAY REQUIREMENTS ===
-- Open-ended question requiring ${defaultAnswerType} response`}
-
-Return JSON:
-{
-  "questions": [
-    {
-      "text": "Question text",
-      ${isMCQ ? `"choices": {"A": "...", "B": "...", "C": "...", "D": "..."},
-      "correct_answer": "A",` : `"rubric_points": ["Point 1", "Point 2"],`}
-      "answer": "Model answer following ${defaultAnswerType} structure",
-      "answer_type": "${defaultAnswerType}",
-      "bloom_alignment_note": "Alignment with ${bloomLevel}",
-      "knowledge_alignment_note": "Targets ${knowledgeDimension} knowledge"
-    }
-  ]
-}`;
+${formatSection}`;
 }
 
 /**
@@ -524,36 +561,38 @@ serve(async (req) => {
   }
 
   try {
-    const rawBody = await req.json();
-    
-    // Validate input with Zod
-    const validationResult = RequestSchema.safeParse(rawBody);
-    
-    if (!validationResult.success) {
-      const errors = validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`);
-      console.error('Validation failed:', errors);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Invalid request parameters', 
-          details: errors 
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Auth check
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-    
+    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+    const anonClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: authHeader } } });
+    const authToken = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(authToken);
+    if (claimsError || !claimsData?.claims) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // Role check - teacher or admin only
+    const roleClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const { data: userRole } = await roleClient.rpc('get_user_role', { user_id: claimsData.claims.sub });
+    if (!userRole || !['admin', 'teacher'].includes(userRole)) {
+      return new Response(JSON.stringify({ error: 'Insufficient permissions' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     const { 
       topic, 
       bloom_level, 
       knowledge_dimension,
-      difficulty,
-      count,
-      question_type,
+      difficulty = 'Average',
+      count = 1,
+      question_type = 'mcq',
       intents,
       pipeline_mode,
-      registry_snapshot
-    } = validationResult.data;
+      registry_snapshot // NEW: Receive registry state
+    } = await req.json();
 
-    // Additional validation for required fields (already validated by schema, but keeping for safety)
     if (!topic || !bloom_level || !knowledge_dimension) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields: topic, bloom_level, knowledge_dimension' }),
@@ -569,16 +608,30 @@ serve(async (req) => {
       );
     }
 
+    // Try Lovable AI Gateway first, fall back to OpenAI
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openAIApiKey) {
-      console.error('OpenAI API key not configured');
+    
+    const apiUrl = lovableApiKey 
+      ? 'https://ai.gateway.lovable.dev/v1/chat/completions'
+      : 'https://api.openai.com/v1/chat/completions';
+    const apiKey = lovableApiKey || openAIApiKey;
+    const modelName = lovableApiKey ? 'google/gemini-2.5-flash' : 'gpt-4o-mini';
+    
+    if (!apiKey) {
+      console.error('No AI API key configured (checked LOVABLE_API_KEY and OPENAI_API_KEY)');
       return new Response(
-        JSON.stringify({ error: 'Service temporarily unavailable' }),
+        JSON.stringify({ error: 'AI service not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    console.log(`Using AI provider: ${lovableApiKey ? 'Lovable Gateway' : 'OpenAI'}, model: ${modelName}`);
+
     const isMCQ = question_type === 'mcq';
+    const isTrueFalse = question_type === 'true_false';
+    const isFillBlank = question_type === 'fill_blank' || question_type === 'short_answer';
+    const isEssay = question_type === 'essay';
     const isIntentDriven = pipeline_mode === 'intent_driven' && Array.isArray(intents) && intents.length > 0;
     
     // Initialize registry from snapshot or create empty
@@ -592,7 +645,7 @@ serve(async (req) => {
     // Build prompt based on pipeline mode
     const prompt = isIntentDriven
       ? buildIntentDrivenPrompt(topic, bloom_level, knowledge_dimension, difficulty, intents, registry, isMCQ)
-      : buildLegacyPrompt(topic, bloom_level, knowledge_dimension, difficulty, count, isMCQ);
+      : buildLegacyPromptMultiType(topic, bloom_level, knowledge_dimension, difficulty, count, question_type);
 
     const systemPrompt = isIntentDriven
       ? `You are an expert educational content RENDERER implementing a constrained question generation pipeline. You do NOT make creative decisions. All structural decisions (concept, operation, answer type) have been made for you. Your ONLY job is to render questions that exactly match the assigned constraints. If you cannot satisfy a constraint, you MUST return an error rather than deviate.`
@@ -606,29 +659,29 @@ serve(async (req) => {
       });
     }
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: modelName,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
         ],
         response_format: { type: "json_object" },
-        temperature: isIntentDriven ? 0.2 : 0.4, // Even lower temp for strict compliance
+        temperature: isIntentDriven ? 0.2 : 0.4,
         max_tokens: 3000
       }),
     });
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('OpenAI API error:', error);
+      console.error('AI API error:', error);
       return new Response(
-        JSON.stringify({ error: 'Failed to generate questions from AI service' }),
+        JSON.stringify({ error: 'Failed to generate questions from AI service', details: error }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
