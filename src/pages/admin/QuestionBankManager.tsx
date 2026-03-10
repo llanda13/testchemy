@@ -64,6 +64,7 @@ export default function QuestionBankManager() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeView, setActiveView] = useState<"questions" | "reports">("questions");
   const queryClient = useQueryClient();
+  const { isAdmin } = useUserRole();
 
   // Cascading filters
   const [filterCategory, setFilterCategory] = useState<string>("all");
