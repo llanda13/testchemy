@@ -287,12 +287,12 @@ export default function Settings() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="institution">Institution</Label>
+              <Label htmlFor="college">College</Label>
               <Input 
-                id="institution" 
-                placeholder="e.g., University of the Philippines"
-                value={profile.institution}
-                onChange={(e) => setProfile(prev => ({ ...prev, institution: e.target.value }))}
+                id="college" 
+                placeholder="e.g., College of Education"
+                value={profile.college}
+                onChange={(e) => setProfile(prev => ({ ...prev, college: e.target.value }))}
               />
               <p className="text-xs text-muted-foreground">
                 This will appear on your TOS headers and printed test outputs
