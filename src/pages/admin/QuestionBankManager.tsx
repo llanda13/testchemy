@@ -422,8 +422,8 @@ export default function QuestionBankManager() {
             >
               <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
               <SelectContent>
-                {CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                {hierarchy.categories.map((c) => (
+                  <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
                 ))}
                 <SelectItem value="__custom__">Other (type below)</SelectItem>
               </SelectContent>
