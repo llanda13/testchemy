@@ -80,30 +80,28 @@ export default function QuestionBankManager() {
     },
   });
 
-  // --- Filter dropdown options ---
+  // --- Filter dropdown options (DB-driven) ---
   const specializationOptions = useMemo(() => {
-    if (filterCategory === "all") return getAllSpecializations();
-    return getSpecializations(filterCategory);
-  }, [filterCategory]);
+    if (filterCategory === "all") return hierarchy.allSpecializations.map(s => s.name);
+    const cat = hierarchy.categories.find(c => c.name === filterCategory);
+    if (!cat) return [];
+    return hierarchy.getSpecializations(cat.id).map(s => s.name);
+  }, [filterCategory, hierarchy.categories, hierarchy.allSpecializations]);
 
   const subjectCodeOptions = useMemo(() => {
-    if (filterCategory === "all" && filterSpecialization === "all") return getAllSubjectCodes();
-    if (filterCategory === "all" && filterSpecialization !== "all") return getAllSubjectCodes(filterSpecialization);
-    if (filterSpecialization === "all") return [];
-    return getSubjectCodes(filterCategory, filterSpecialization);
-  }, [filterCategory, filterSpecialization]);
+    if (filterSpecialization === "all") {
+      return hierarchy.allSubjects.map(s => ({ code: s.code, description: s.description }));
+    }
+    const spec = hierarchy.allSpecializations.find(s => s.name === filterSpecialization);
+    if (!spec) return [];
+    return hierarchy.getSubjects(spec.id).map(s => ({ code: s.code, description: s.description }));
+  }, [filterSpecialization, hierarchy.allSpecializations, hierarchy.allSubjects]);
 
   const computedSubjectDescription = useMemo(() => {
     if (filterSubjectCode === "all") return "";
-    // Try exact config lookup first
-    if (filterCategory !== "all" && filterSpecialization !== "all") {
-      return getSubjectDescription(filterCategory, filterSpecialization, filterSubjectCode);
-    }
-    // Fallback: find in all subject codes
-    const match = getAllSubjectCodes(filterSpecialization !== "all" ? filterSpecialization : undefined)
-      .find((s) => s.code === filterSubjectCode);
+    const match = subjectCodeOptions.find(s => s.code === filterSubjectCode);
     return match?.description || "";
-  }, [filterCategory, filterSpecialization, filterSubjectCode]);
+  }, [filterSubjectCode, subjectCodeOptions]);
 
   // Cascading reset handlers
   const handleCategoryChange = (value: string) => {
