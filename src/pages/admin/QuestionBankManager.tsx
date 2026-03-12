@@ -35,7 +35,8 @@ export default function QuestionBankManager() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [activeView, setActiveView] = useState<"questions" | "reports">("questions");
+  const [activeView, setActiveView] = useState<"questions" | "reports" | "manage-filters">("questions");
+  const hierarchy = useAcademicHierarchy();
   const queryClient = useQueryClient();
   const { isAdmin } = useUserRole();
 
