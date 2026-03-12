@@ -103,7 +103,7 @@ const App = () => {
                         <Route path="tos-history" element={<TOSHistory />} />
                         <Route path="tos-view/:tosId" element={<TOSViewPage />} />
                         <Route path="tos/:tosId" element={<TOSPage />} />
-                        <Route path="reports" element={<TeacherReports />} />
+                        
                         <Route path="export" element={<ProfessionalExport />} />
                         <Route path="tests" element={<Tests />} />
                         <Route path="collaboration" element={<Collaboration />} />
