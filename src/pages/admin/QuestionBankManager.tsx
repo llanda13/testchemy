@@ -28,30 +28,7 @@ const DIFFICULTY_COGNITIVE_MAP: Record<string, string[]> = {
   Difficult: ["Evaluating", "Creating"],
 };
 
-// Gather all unique specializations across all categories
-function getAllSpecializations(): string[] {
-  const set = new Set<string>();
-  Object.values(CATEGORY_CONFIG).forEach((cat) =>
-    cat.specializations.forEach((s) => set.add(s.name))
-  );
-  return Array.from(set).sort();
-}
-
-// Gather all unique subject codes across all categories (optionally filtered by specialization)
-function getAllSubjectCodes(specialization?: string): { code: string; description: string }[] {
-  const map = new Map<string, string>();
-  Object.values(CATEGORY_CONFIG).forEach((cat) =>
-    cat.specializations.forEach((s) => {
-      if (specialization && s.name !== specialization) return;
-      s.subjects.forEach((sub) => {
-        if (!map.has(sub.code)) map.set(sub.code, sub.description);
-      });
-    })
-  );
-  return Array.from(map.entries())
-    .map(([code, description]) => ({ code, description }))
-    .sort((a, b) => a.code.localeCompare(b.code));
-}
+// These helper functions are no longer needed - replaced by useAcademicHierarchy hook
 
 export default function QuestionBankManager() {
   const [searchQuery, setSearchQuery] = useState("");
