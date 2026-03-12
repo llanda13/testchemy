@@ -479,8 +479,8 @@ export default function QuestionBankManager() {
               <Select
                 value={formData.subject_code || undefined}
                 onValueChange={(v) => {
-                  const desc = getSubjectDescription(formData.category, formData.specialization, v);
-                  setFormData({ ...formData, subject_code: v, subject_description: desc });
+                  const match = formSubjectCodeOptions.find(s => s.code === v);
+                  setFormData({ ...formData, subject_code: v, subject_description: match?.description || "" });
                 }}
               >
                 <SelectTrigger><SelectValue placeholder="Select code" /></SelectTrigger>
