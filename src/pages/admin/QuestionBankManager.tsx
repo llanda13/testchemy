@@ -14,15 +14,11 @@ import { Plus, Search, Edit, Trash2, Save, X, Filter, FileText, BarChart3 } from
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Questions, type Question } from "@/services/db/questions";
-import {
-  CATEGORIES,
-  CATEGORY_CONFIG,
-  getSpecializations,
-  getSubjectCodes,
-  getSubjectDescription,
-} from "@/config/questionBankFilters";
 import { QuestionBankReports } from "@/components/admin/QuestionBankReports";
+import { FilterManagement } from "@/components/admin/FilterManagement";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useAcademicHierarchy } from "@/hooks/useAcademicHierarchy";
+import { Settings2 } from "lucide-react";
 
 const ALL_BLOOM_LEVELS = ["Remembering", "Understanding", "Applying", "Analyzing", "Evaluating", "Creating"];
 
@@ -32,37 +28,15 @@ const DIFFICULTY_COGNITIVE_MAP: Record<string, string[]> = {
   Difficult: ["Evaluating", "Creating"],
 };
 
-// Gather all unique specializations across all categories
-function getAllSpecializations(): string[] {
-  const set = new Set<string>();
-  Object.values(CATEGORY_CONFIG).forEach((cat) =>
-    cat.specializations.forEach((s) => set.add(s.name))
-  );
-  return Array.from(set).sort();
-}
-
-// Gather all unique subject codes across all categories (optionally filtered by specialization)
-function getAllSubjectCodes(specialization?: string): { code: string; description: string }[] {
-  const map = new Map<string, string>();
-  Object.values(CATEGORY_CONFIG).forEach((cat) =>
-    cat.specializations.forEach((s) => {
-      if (specialization && s.name !== specialization) return;
-      s.subjects.forEach((sub) => {
-        if (!map.has(sub.code)) map.set(sub.code, sub.description);
-      });
-    })
-  );
-  return Array.from(map.entries())
-    .map(([code, description]) => ({ code, description }))
-    .sort((a, b) => a.code.localeCompare(b.code));
-}
+// These helper functions are no longer needed - replaced by useAcademicHierarchy hook
 
 export default function QuestionBankManager() {
   const [searchQuery, setSearchQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [activeView, setActiveView] = useState<"questions" | "reports">("questions");
+  const [activeView, setActiveView] = useState<"questions" | "reports" | "manage-filters">("questions");
+  const hierarchy = useAcademicHierarchy();
   const queryClient = useQueryClient();
   const { isAdmin } = useUserRole();
 
@@ -106,30 +80,28 @@ export default function QuestionBankManager() {
     },
   });
 
-  // --- Filter dropdown options ---
+  // --- Filter dropdown options (DB-driven) ---
   const specializationOptions = useMemo(() => {
-    if (filterCategory === "all") return getAllSpecializations();
-    return getSpecializations(filterCategory);
-  }, [filterCategory]);
+    if (filterCategory === "all") return hierarchy.allSpecializations.map(s => s.name);
+    const cat = hierarchy.categories.find(c => c.name === filterCategory);
+    if (!cat) return [];
+    return hierarchy.getSpecializations(cat.id).map(s => s.name);
+  }, [filterCategory, hierarchy.categories, hierarchy.allSpecializations]);
 
   const subjectCodeOptions = useMemo(() => {
-    if (filterCategory === "all" && filterSpecialization === "all") return getAllSubjectCodes();
-    if (filterCategory === "all" && filterSpecialization !== "all") return getAllSubjectCodes(filterSpecialization);
-    if (filterSpecialization === "all") return [];
-    return getSubjectCodes(filterCategory, filterSpecialization);
-  }, [filterCategory, filterSpecialization]);
+    if (filterSpecialization === "all") {
+      return hierarchy.allSubjects.map(s => ({ code: s.code, description: s.description }));
+    }
+    const spec = hierarchy.allSpecializations.find(s => s.name === filterSpecialization);
+    if (!spec) return [];
+    return hierarchy.getSubjects(spec.id).map(s => ({ code: s.code, description: s.description }));
+  }, [filterSpecialization, hierarchy.allSpecializations, hierarchy.allSubjects]);
 
   const computedSubjectDescription = useMemo(() => {
     if (filterSubjectCode === "all") return "";
-    // Try exact config lookup first
-    if (filterCategory !== "all" && filterSpecialization !== "all") {
-      return getSubjectDescription(filterCategory, filterSpecialization, filterSubjectCode);
-    }
-    // Fallback: find in all subject codes
-    const match = getAllSubjectCodes(filterSpecialization !== "all" ? filterSpecialization : undefined)
-      .find((s) => s.code === filterSubjectCode);
+    const match = subjectCodeOptions.find(s => s.code === filterSubjectCode);
     return match?.description || "";
-  }, [filterCategory, filterSpecialization, filterSubjectCode]);
+  }, [filterSubjectCode, subjectCodeOptions]);
 
   // Cascading reset handlers
   const handleCategoryChange = (value: string) => {
@@ -188,16 +160,20 @@ export default function QuestionBankManager() {
     return ALL_BLOOM_LEVELS.filter((l) => levels.has(l));
   }, [formDifficultyDomain]);
 
-  // --- Form specialization options ---
+  // --- Form specialization options (DB-driven) ---
   const formSpecializationOptions = useMemo(() => {
-    if (!formData.category) return [];
-    return getSpecializations(formData.category);
-  }, [formData.category]);
+    if (!formData.category) return [] as string[];
+    const cat = hierarchy.categories.find(c => c.name === formData.category);
+    if (!cat) return [] as string[];
+    return hierarchy.getSpecializations(cat.id).map(s => s.name);
+  }, [formData.category, hierarchy.categories, hierarchy.allSpecializations]);
 
   const formSubjectCodeOptions = useMemo(() => {
-    if (!formData.category || !formData.specialization) return [];
-    return getSubjectCodes(formData.category, formData.specialization);
-  }, [formData.category, formData.specialization]);
+    if (!formData.specialization) return [] as { code: string; description: string }[];
+    const spec = hierarchy.allSpecializations.find(s => s.name === formData.specialization);
+    if (!spec) return [] as { code: string; description: string }[];
+    return hierarchy.getSubjects(spec.id).map(s => ({ code: s.code, description: s.description }));
+  }, [formData.specialization, hierarchy.allSpecializations, hierarchy.allSubjects]);
 
   // --- Mutations ---
   const createMutation = useMutation({
@@ -446,8 +422,8 @@ export default function QuestionBankManager() {
             >
               <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
               <SelectContent>
-                {CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                {hierarchy.categories.map((c) => (
+                  <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
                 ))}
                 <SelectItem value="__custom__">Other (type below)</SelectItem>
               </SelectContent>
@@ -503,8 +479,8 @@ export default function QuestionBankManager() {
               <Select
                 value={formData.subject_code || undefined}
                 onValueChange={(v) => {
-                  const desc = getSubjectDescription(formData.category, formData.specialization, v);
-                  setFormData({ ...formData, subject_code: v, subject_description: desc });
+                  const match = formSubjectCodeOptions.find(s => s.code === v);
+                  setFormData({ ...formData, subject_code: v, subject_description: match?.description || "" });
                 }}
               >
                 <SelectTrigger><SelectValue placeholder="Select code" /></SelectTrigger>
@@ -636,8 +612,8 @@ export default function QuestionBankManager() {
                   <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Categories</SelectItem>
-                    {CATEGORIES.map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    {hierarchy.categories.map((c) => (
+                      <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -731,10 +707,23 @@ export default function QuestionBankManager() {
                 <BarChart3 className="h-4 w-4" />
                 Reports
               </Button>
+              {isAdmin && (
+                <Button
+                  variant={activeView === "manage-filters" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setActiveView("manage-filters")}
+                  className="gap-1.5"
+                >
+                  <Settings2 className="h-4 w-4" />
+                  Manage Filters
+                </Button>
+              )}
             </div>
           </div>
 
-          {activeView === "reports" ? (
+          {activeView === "manage-filters" ? (
+            <FilterManagement />
+          ) : activeView === "reports" ? (
             <QuestionBankReports questions={filteredQuestions} />
           ) : (
             <>
