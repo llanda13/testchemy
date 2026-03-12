@@ -61,12 +61,6 @@ const teacherMenuItems = [
     icon: Brain,
     description: "Academic AI helper" 
   },
-  { 
-    title: "Reports", 
-    href: "/teacher/reports", 
-    icon: BarChart3,
-    description: "Usage statistics" 
-  },
 ];
 
 const bottomMenuItems = [

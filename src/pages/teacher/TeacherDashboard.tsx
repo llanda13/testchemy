@@ -10,12 +10,14 @@ import {
   BarChart3,
   Database,
   Layers,
-  Clock
+  Clock,
+  TrendingUp
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { format, subMonths, startOfMonth, endOfMonth, eachWeekOfInterval, startOfWeek, endOfWeek, parseISO } from "date-fns";
+import { TopicCoverageChart } from "@/components/reports/TopicCoverageChart";
 
 export default function TeacherDashboard() {
   const navigate = useNavigate();
