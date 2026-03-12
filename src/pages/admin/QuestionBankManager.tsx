@@ -707,10 +707,23 @@ export default function QuestionBankManager() {
                 <BarChart3 className="h-4 w-4" />
                 Reports
               </Button>
+              {isAdmin && (
+                <Button
+                  variant={activeView === "manage-filters" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setActiveView("manage-filters")}
+                  className="gap-1.5"
+                >
+                  <Settings2 className="h-4 w-4" />
+                  Manage Filters
+                </Button>
+              )}
             </div>
           </div>
 
-          {activeView === "reports" ? (
+          {activeView === "manage-filters" ? (
+            <FilterManagement />
+          ) : activeView === "reports" ? (
             <QuestionBankReports questions={filteredQuestions} />
           ) : (
             <>
