@@ -160,16 +160,20 @@ export default function QuestionBankManager() {
     return ALL_BLOOM_LEVELS.filter((l) => levels.has(l));
   }, [formDifficultyDomain]);
 
-  // --- Form specialization options ---
+  // --- Form specialization options (DB-driven) ---
   const formSpecializationOptions = useMemo(() => {
-    if (!formData.category) return [];
-    return getSpecializations(formData.category);
-  }, [formData.category]);
+    if (!formData.category) return [] as string[];
+    const cat = hierarchy.categories.find(c => c.name === formData.category);
+    if (!cat) return [] as string[];
+    return hierarchy.getSpecializations(cat.id).map(s => s.name);
+  }, [formData.category, hierarchy.categories, hierarchy.allSpecializations]);
 
   const formSubjectCodeOptions = useMemo(() => {
-    if (!formData.category || !formData.specialization) return [];
-    return getSubjectCodes(formData.category, formData.specialization);
-  }, [formData.category, formData.specialization]);
+    if (!formData.specialization) return [] as { code: string; description: string }[];
+    const spec = hierarchy.allSpecializations.find(s => s.name === formData.specialization);
+    if (!spec) return [] as { code: string; description: string }[];
+    return hierarchy.getSubjects(spec.id).map(s => ({ code: s.code, description: s.description }));
+  }, [formData.specialization, hierarchy.allSpecializations, hierarchy.allSubjects]);
 
   // --- Mutations ---
   const createMutation = useMutation({
