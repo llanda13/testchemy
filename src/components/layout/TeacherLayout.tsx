@@ -7,7 +7,7 @@ import {
   FileText, 
   Sparkles, 
   Clock,
-  BarChart3,
+  
   Settings,
   LogOut,
   ChevronLeft,
