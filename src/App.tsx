@@ -25,7 +25,7 @@ import GeneratedTestPage from "./pages/teacher/GeneratedTestPage";
 import TeacherHistory from "./pages/teacher/History";
 import TOSHistory from "./pages/teacher/TOSHistory";
 import TOSViewPage from "./pages/teacher/TOSViewPage";
-import TeacherReports from "./pages/teacher/Reports";
+
 import TeacherSettings from "./pages/teacher/Settings";
 import ProfessionalExport from "./pages/ProfessionalExport";
 import AIAssistant from "./pages/AIAssistant";
@@ -103,7 +103,7 @@ const App = () => {
                         <Route path="tos-history" element={<TOSHistory />} />
                         <Route path="tos-view/:tosId" element={<TOSViewPage />} />
                         <Route path="tos/:tosId" element={<TOSPage />} />
-                        <Route path="reports" element={<TeacherReports />} />
+                        
                         <Route path="export" element={<ProfessionalExport />} />
                         <Route path="tests" element={<Tests />} />
                         <Route path="collaboration" element={<Collaboration />} />
