@@ -14,15 +14,11 @@ import { Plus, Search, Edit, Trash2, Save, X, Filter, FileText, BarChart3 } from
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Questions, type Question } from "@/services/db/questions";
-import {
-  CATEGORIES,
-  CATEGORY_CONFIG,
-  getSpecializations,
-  getSubjectCodes,
-  getSubjectDescription,
-} from "@/config/questionBankFilters";
 import { QuestionBankReports } from "@/components/admin/QuestionBankReports";
+import { FilterManagement } from "@/components/admin/FilterManagement";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useAcademicHierarchy } from "@/hooks/useAcademicHierarchy";
+import { Settings2 } from "lucide-react";
 
 const ALL_BLOOM_LEVELS = ["Remembering", "Understanding", "Applying", "Analyzing", "Evaluating", "Creating"];
 
