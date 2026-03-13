@@ -88,13 +88,25 @@ export default function GeneratedTestPage() {
   const [test, setTest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showAnswerKey, setShowAnswerKey] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ college: '', examType: '', subjectCode: '', subjectDescription: '' });
+  const [saving, setSaving] = useState(false);
+  const [college, setCollege] = useState<string | null>(null);
   const { checkAndRepair, isRepairing } = useTestAutoRepair(testId);
 
   useEffect(() => {
     if (testId) {
       fetchTest();
     }
+    fetchCollege();
   }, [testId]);
+
+  const fetchCollege = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await supabase.from('profiles').select('college').eq('id', user.id).single();
+    setCollege(data?.college || null);
+  };
 
   const fetchTest = async () => {
     try {
@@ -142,9 +154,57 @@ export default function GeneratedTestPage() {
     }
   };
 
-  // Fixed: Navigate back to my-tests instead of non-existent /teacher/tests
   const handleBack = () => {
     navigate("/teacher/my-tests");
+  };
+
+  const openEditDialog = () => {
+    setEditForm({
+      college: college || '',
+      examType: test?.exam_period || '',
+      subjectCode: test?.course || '',
+      subjectDescription: test?.subject || '',
+    });
+    setEditOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!test || !testId) return;
+    setSaving(true);
+    try {
+      // Build new title from course + exam type
+      const newTitle = `${editForm.subjectCode || test.course} - ${editForm.examType || test.exam_period}`;
+      
+      await GeneratedTests.update(testId, {
+        course: editForm.subjectCode,
+        subject: editForm.subjectDescription,
+        exam_period: editForm.examType,
+        title: newTitle,
+      });
+
+      // Update college in profile
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && editForm.college) {
+        await supabase.from('profiles').update({ college: editForm.college }).eq('id', user.id);
+        setCollege(editForm.college);
+      }
+
+      setTest((prev: any) => ({
+        ...prev,
+        course: editForm.subjectCode,
+        subject: editForm.subjectDescription,
+        exam_period: editForm.examType,
+        title: newTitle,
+      }));
+
+      setEditOpen(false);
+      toast({ title: "Updated", description: "Test information saved successfully." });
+    } catch (error) {
+      console.error("Error updating test:", error);
+      toast({ title: "Error", description: "Failed to update test information.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading || isRepairing) {
