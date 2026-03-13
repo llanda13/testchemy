@@ -77,9 +77,8 @@ export default function MyTests() {
   };
 
   const getTotalPoints = (test: GeneratedTest) => {
-    const itemCount = Array.isArray(test.items) ? test.items.length : 0;
-    const ptsPerQ = test.points_per_question || 1;
-    return itemCount * ptsPerQ;
+    if (!Array.isArray(test.items)) return 0;
+    return test.items.reduce((sum: number, item: any) => sum + (item.points || 1), 0);
   };
 
   const formatDate = (dateStr: string) => {
