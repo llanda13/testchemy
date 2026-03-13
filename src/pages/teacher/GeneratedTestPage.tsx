@@ -4,13 +4,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Printer, Download, Key } from "lucide-react";
+import { ArrowLeft, Printer, Download, Key, Pencil } from "lucide-react";
 import { GeneratedTests } from "@/services/db/generatedTests";
 import { useToast } from "@/hooks/use-toast";
 import { usePDFExport } from "@/hooks/usePDFExport";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTestAutoRepair } from "@/hooks/useTestAutoRepair";
 import { ExamPrintTemplate } from "@/components/print/ExamPrintTemplate";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
 
 interface TestItem {
   question_text?: string;
