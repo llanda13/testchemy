@@ -164,6 +164,7 @@ export default function GeneratedTestPage() {
       examType: test?.exam_period || '',
       subjectCode: test?.course || '',
       subjectDescription: test?.subject || '',
+      schoolYear: test?.school_year || '',
     });
     setEditOpen(true);
   };
