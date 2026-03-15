@@ -180,6 +180,7 @@ export default function GeneratedTestPage() {
         course: editForm.subjectCode,
         subject: editForm.subjectDescription,
         exam_period: editForm.examType,
+        school_year: editForm.schoolYear,
         title: newTitle,
       });
 
