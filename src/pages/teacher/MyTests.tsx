@@ -123,49 +123,45 @@ export default function MyTests() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {tests.map((test) => (
             <Card key={test.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <FileText className="h-5 w-5 shrink-0 text-primary" />
-                  {test.title || 'Untitled Test'}
-                </CardTitle>
-                {test.exam_period && (
-                  <Badge variant="secondary" className="w-fit mt-1">
-                    {test.exam_period}
-                  </Badge>
-                )}
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="space-y-2 text-sm text-muted-foreground">
-                  {test.subject && (
-                    <div className="flex items-start gap-2">
-                      <BookOpen className="h-4 w-4 mt-0.5 shrink-0" />
-                      <span>
-                        <span className="font-medium text-foreground">Subject:</span>{' '}
-                        {test.course ? `${test.course} – ` : ''}{test.subject}
-                      </span>
-                    </div>
-                  )}
-                  {college && (
-                    <div className="flex items-start gap-2">
-                      <Building2 className="h-4 w-4 mt-0.5 shrink-0" />
-                      <span>
-                        <span className="font-medium text-foreground">College:</span>{' '}
-                        {college}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 shrink-0" />
+              <CardContent className="p-5 space-y-3">
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-start gap-2">
+                    <Building2 className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
                     <span>
-                      <span className="font-medium text-foreground">Date:</span>{' '}
-                      {formatDate(test.created_at)}
+                      <span className="font-semibold text-foreground">College:</span>{' '}
+                      <span className="text-muted-foreground">{college || 'Not set'}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <FileText className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                    <span>
+                      <span className="font-semibold text-foreground">Exam:</span>{' '}
+                      <span className="text-muted-foreground">{test.exam_period || 'Not set'}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <BookOpen className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                    <span>
+                      <span className="font-semibold text-foreground">Subject:</span>{' '}
+                      <span className="text-muted-foreground">
+                        {test.course && test.subject
+                          ? `${test.course} – ${test.subject}`
+                          : test.subject || test.course || 'Not set'}
+                      </span>
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <GraduationCap className="h-4 w-4 shrink-0" />
+                    <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <span>
-                      <span className="font-medium text-foreground">Total Points:</span>{' '}
-                      {getTotalPoints(test)}
+                      <span className="font-semibold text-foreground">Date Generated:</span>{' '}
+                      <span className="text-muted-foreground">{formatDate(test.created_at)}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <GraduationCap className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span>
+                      <span className="font-semibold text-foreground">Total Points:</span>{' '}
+                      <span className="text-muted-foreground">{getTotalPoints(test)}</span>
                     </span>
                   </div>
                 </div>
