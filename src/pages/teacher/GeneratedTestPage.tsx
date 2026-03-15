@@ -89,7 +89,7 @@ export default function GeneratedTestPage() {
   const [loading, setLoading] = useState(true);
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ college: '', examType: '', subjectCode: '', subjectDescription: '' });
+  const [editForm, setEditForm] = useState({ college: '', examType: '', subjectCode: '', subjectDescription: '', schoolYear: '' });
   const [saving, setSaving] = useState(false);
   const [college, setCollege] = useState<string | null>(null);
   const { checkAndRepair, isRepairing } = useTestAutoRepair(testId);
@@ -164,6 +164,7 @@ export default function GeneratedTestPage() {
       examType: test?.exam_period || '',
       subjectCode: test?.course || '',
       subjectDescription: test?.subject || '',
+      schoolYear: test?.school_year || '',
     });
     setEditOpen(true);
   };
@@ -179,6 +180,7 @@ export default function GeneratedTestPage() {
         course: editForm.subjectCode,
         subject: editForm.subjectDescription,
         exam_period: editForm.examType,
+        school_year: editForm.schoolYear,
         title: newTitle,
       });
 
@@ -194,6 +196,7 @@ export default function GeneratedTestPage() {
         course: editForm.subjectCode,
         subject: editForm.subjectDescription,
         exam_period: editForm.examType,
+        school_year: editForm.schoolYear,
         title: newTitle,
       }));
 
@@ -386,6 +389,15 @@ export default function GeneratedTestPage() {
                 value={editForm.subjectDescription}
                 onChange={(e) => setEditForm(f => ({ ...f, subjectDescription: e.target.value }))}
                 placeholder="e.g. Introduction to Computing"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-school-year">Academic Year / School Year</Label>
+              <Input
+                id="edit-school-year"
+                value={editForm.schoolYear}
+                onChange={(e) => setEditForm(f => ({ ...f, schoolYear: e.target.value }))}
+                placeholder="e.g. 2024-2025"
               />
             </div>
             <div className="text-sm text-muted-foreground">
