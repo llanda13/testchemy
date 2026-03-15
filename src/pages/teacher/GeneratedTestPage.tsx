@@ -391,6 +391,15 @@ export default function GeneratedTestPage() {
                 placeholder="e.g. Introduction to Computing"
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-school-year">Academic Year / School Year</Label>
+              <Input
+                id="edit-school-year"
+                value={editForm.schoolYear}
+                onChange={(e) => setEditForm(f => ({ ...f, schoolYear: e.target.value }))}
+                placeholder="e.g. 2024-2025"
+              />
+            </div>
             <div className="text-sm text-muted-foreground">
               <span className="font-medium">Date Generated:</span> {new Date(test.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
             </div>
