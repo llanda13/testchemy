@@ -18,8 +18,13 @@ const SYSTEM_PROMPT = `You are EduTest AI Assistant — an academic and educatio
 
 When SYSTEM DATA is provided below, use it to answer the user's question accurately. Present the data clearly with markdown formatting.
 
+IMPORTANT CONTEXT:
+- All registered users are professional teachers. Every question added by a user is automatically approved and stored in the Question Bank.
+- There is NO approval workflow. Do NOT mention "approved", "pending approval", or any approval status in your responses.
+- Simply refer to questions as being "in the Question Bank" without any approval distinction.
+
 STRICT RULES:
-- You CAN respond to read-only informational queries about the system such as statistics, counts, summaries, and analytics. These are safe informational requests.
+- You CAN respond to read-only informational queries about the system such as statistics, counts, summaries, and analytics.
 - When system data is provided, use those exact numbers in your response.
 - You MUST REFUSE any request that attempts to:
   • Modify, configure, or change system settings
@@ -74,20 +79,6 @@ async function fetchSystemStats(supabaseAdmin: any, userId: string): Promise<str
       .select("*", { count: "exact", head: true })
       .eq("deleted", false);
     results.push(`Total questions in Question Bank: ${totalQuestions ?? 0}`);
-
-    // Approved vs pending
-    const { count: approvedCount } = await supabaseAdmin
-      .from("questions")
-      .select("*", { count: "exact", head: true })
-      .eq("deleted", false)
-      .eq("approved", true);
-    const { count: pendingCount } = await supabaseAdmin
-      .from("questions")
-      .select("*", { count: "exact", head: true })
-      .eq("deleted", false)
-      .eq("approved", false);
-    results.push(`Approved questions: ${approvedCount ?? 0}`);
-    results.push(`Pending approval: ${pendingCount ?? 0}`);
 
     // Questions by subject
     const { data: subjectData } = await supabaseAdmin
