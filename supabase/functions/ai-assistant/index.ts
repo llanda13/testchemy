@@ -80,20 +80,6 @@ async function fetchSystemStats(supabaseAdmin: any, userId: string): Promise<str
       .eq("deleted", false);
     results.push(`Total questions in Question Bank: ${totalQuestions ?? 0}`);
 
-    // Approved vs pending
-    const { count: approvedCount } = await supabaseAdmin
-      .from("questions")
-      .select("*", { count: "exact", head: true })
-      .eq("deleted", false)
-      .eq("approved", true);
-    const { count: pendingCount } = await supabaseAdmin
-      .from("questions")
-      .select("*", { count: "exact", head: true })
-      .eq("deleted", false)
-      .eq("approved", false);
-    results.push(`Approved questions: ${approvedCount ?? 0}`);
-    results.push(`Pending approval: ${pendingCount ?? 0}`);
-
     // Questions by subject
     const { data: subjectData } = await supabaseAdmin
       .from("questions")
