@@ -77,8 +77,10 @@ export default function AIAssistant() {
         const data = await resp.json();
         if (data.refusal) {
           setMessages(prev => [...prev, { role: "assistant", content: data.message }]);
-          return;
+        } else if (data.error) {
+          throw new Error(data.error);
         }
+        return;
       }
 
       // Handle streaming SSE response
