@@ -9,7 +9,8 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Upload, FileText, CircleCheck as CheckCircle, CircleAlert as AlertCircle, X, Download, Brain, Sparkles, Eye, Save, Pencil } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Upload, FileText, CircleCheck as CheckCircle, CircleAlert as AlertCircle, X, Download, Brain, Sparkles, Eye, Save, Pencil, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Questions } from '@/services/db/questions';
 import { classifyQuestions } from '@/services/edgeFunctions';
@@ -48,19 +49,30 @@ interface ParsedQuestion {
   specialization?: string;
   subject_code?: string;
   subject_description?: string;
+  points_value?: number;
+}
+
+interface RowError {
+  row: number;
+  field: string;
+  message: string;
 }
 
 interface ImportStats {
   total: number;
   processed: number;
-  approved: number;
-  needsReview: number;
+  duplicatesSkipped: number;
   byBloom: Record<string, number>;
   byDifficulty: Record<string, number>;
   byTopic: Record<string, number>;
+  byCategory: Record<string, number>;
 }
 
 type ImportStep = 'upload' | 'preview' | 'verification' | 'processing' | 'results';
+
+const VALID_BLOOM_LEVELS = ['remembering', 'understanding', 'applying', 'analyzing', 'evaluating', 'creating'];
+const VALID_DIFFICULTIES = ['easy', 'moderate', 'difficult'];
+const VALID_QUESTION_TYPES = ['mcq', 'true_false', 'essay', 'short_answer', 'multiple choice', 'true/false', 'tf'];
 
 export default function BulkImport({
   onClose,
@@ -71,14 +83,13 @@ export default function BulkImport({
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState('');
   const [results, setResults] = useState<ImportStats | null>(null);
-  const [errors, setErrors] = useState<string[]>([]);
+  const [rowErrors, setRowErrors] = useState<RowError[]>([]);
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<string>('General');
   const [classificationResults, setClassificationResults] = useState<any[]>([]);
   const [showClassificationDetails, setShowClassificationDetails] = useState(false);
   
-  // New: verification step state
   const [importStep, setImportStep] = useState<ImportStep>('upload');
   const [verificationData, setVerificationData] = useState<ParsedQuestion[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -98,11 +109,11 @@ export default function BulkImport({
 
     if (isCSV) {
       setFile(file);
-      setErrors([]);
+      setRowErrors([]);
       previewCSV(file);
     } else if (isPDF) {
       setFile(file);
-      setErrors([]);
+      setRowErrors([]);
       previewPDF(file);
     } else {
       toast.error('Please upload a CSV or PDF file');
@@ -207,30 +218,137 @@ export default function BulkImport({
     }
   };
 
-  const validateRow = (row: any, index: number): string[] => {
-    const errors: string[] = [];
-    if (!row.Question && !row.question_text && !row['Question Text']) {
-      errors.push(`Row ${index + 1}: Missing question text`);
+  /** Comprehensive row validation with detailed error messages */
+  const validateRow = (row: any, index: number): RowError[] => {
+    const errors: RowError[] = [];
+    const rowNum = index + 1;
+
+    // Required: Question text
+    const questionText = row.Question || row.question_text || row['Question Text'] || '';
+    if (!questionText.trim()) {
+      errors.push({ row: rowNum, field: 'Question', message: 'Question text is required' });
+    } else if (questionText.trim().length < 10) {
+      errors.push({ row: rowNum, field: 'Question', message: 'Question text is too short (minimum 10 characters)' });
     }
+
+    // Required: Topic
     if (!row.Topic && !row.topic) {
-      errors.push(`Row ${index + 1}: Missing topic`);
+      errors.push({ row: rowNum, field: 'Topic', message: 'Topic is required' });
     }
+
+    // Required: Category
+    const category = row.Category || row.category || '';
+    if (!category.trim()) {
+      errors.push({ row: rowNum, field: 'Category', message: 'Category is required (Major or GE)' });
+    } else if (!Object.keys(CATEGORY_CONFIG).includes(category.trim())) {
+      errors.push({ row: rowNum, field: 'Category', message: `Invalid category "${category}". Must be: ${Object.keys(CATEGORY_CONFIG).join(', ')}` });
+    }
+
+    // Required: Specialization
+    const specialization = row.Specialization || row.specialization || '';
+    if (!specialization.trim()) {
+      errors.push({ row: rowNum, field: 'Specialization', message: 'Specialization is required' });
+    } else if (category.trim() && Object.keys(CATEGORY_CONFIG).includes(category.trim())) {
+      const validSpecs = getSpecializations(category.trim());
+      if (!validSpecs.includes(specialization.trim())) {
+        errors.push({ row: rowNum, field: 'Specialization', message: `Invalid specialization "${specialization}" for category "${category}". Valid: ${validSpecs.join(', ')}` });
+      }
+    }
+
+    // Required: Subject Code
+    const subjectCode = row.SubjectCode || row.subject_code || row['Subject Code'] || '';
+    if (!subjectCode.trim()) {
+      errors.push({ row: rowNum, field: 'Subject Code', message: 'Subject Code is required' });
+    }
+
+    // Required: Subject Description
+    const subjectDesc = row.SubjectDescription || row.subject_description || row['Subject Description'] || '';
+    if (!subjectDesc.trim()) {
+      errors.push({ row: rowNum, field: 'Subject Description', message: 'Subject Description is required' });
+    }
+
+    // Required: Question Type
+    const qType = (row.Type || row.type || row.question_type || '').toLowerCase().trim();
+    if (!qType) {
+      errors.push({ row: rowNum, field: 'Type', message: 'Question Type is required (mcq, true_false, essay, short_answer)' });
+    }
+
+    // Required: Bloom Level (Cognitive Level)
+    const bloom = (row.Bloom || row.bloom_level || row['Bloom Level'] || '').toLowerCase().trim();
+    if (!bloom) {
+      errors.push({ row: rowNum, field: 'Bloom', message: 'Cognitive Level (Bloom) is required' });
+    } else if (!VALID_BLOOM_LEVELS.includes(bloom)) {
+      errors.push({ row: rowNum, field: 'Bloom', message: `Invalid Bloom level "${bloom}". Must be: ${VALID_BLOOM_LEVELS.join(', ')}` });
+    }
+
+    // Required: Difficulty
+    const difficulty = (row.Difficulty || row.difficulty || '').toLowerCase().trim();
+    if (!difficulty) {
+      errors.push({ row: rowNum, field: 'Difficulty', message: 'Difficulty is required (Easy, Moderate, Difficult)' });
+    } else if (!VALID_DIFFICULTIES.includes(difficulty)) {
+      errors.push({ row: rowNum, field: 'Difficulty', message: `Invalid difficulty "${difficulty}". Must be: ${VALID_DIFFICULTIES.join(', ')}` });
+    }
+
+    // Required: Points Value
+    const points = row.Points || row.points_value || row['Points'] || '';
+    if (!points.toString().trim()) {
+      errors.push({ row: rowNum, field: 'Points', message: 'Points value is required' });
+    } else if (isNaN(Number(points)) || Number(points) <= 0) {
+      errors.push({ row: rowNum, field: 'Points', message: 'Points must be a positive number' });
+    }
+
+    // MCQ-specific validation
+    const normalizedType = normalizeQuestionType(qType);
+    if (normalizedType === 'mcq') {
+      const choiceA = row.A || row['Choice A'] || '';
+      const choiceB = row.B || row['Choice B'] || '';
+      const choiceC = row.C || row['Choice C'] || '';
+      const choiceD = row.D || row['Choice D'] || '';
+      
+      const choices = [choiceA, choiceB, choiceC, choiceD].filter(c => c.trim());
+      if (choices.length < 4) {
+        errors.push({ row: rowNum, field: 'Choices', message: 'Multiple choice questions require exactly 4 choices (A, B, C, D)' });
+      }
+
+      const correct = (row.Correct || row.correct_answer || row['Correct Answer'] || '').toUpperCase().trim();
+      if (!correct || !['A', 'B', 'C', 'D'].includes(correct)) {
+        errors.push({ row: rowNum, field: 'Correct', message: 'Correct answer must be A, B, C, or D' });
+      }
+
+      // Check for placeholder/empty distractors
+      const filledChoices = [choiceA, choiceB, choiceC, choiceD];
+      filledChoices.forEach((choice, i) => {
+        const letter = String.fromCharCode(65 + i);
+        if (choice.trim() && choice.trim().length < 2) {
+          errors.push({ row: rowNum, field: `Choice ${letter}`, message: `Choice ${letter} is too short - distractors must be plausible` });
+        }
+      });
+    }
+
+    // True/False validation
+    if (normalizedType === 'true_false') {
+      const correct = (row.Correct || row.correct_answer || row['Correct Answer'] || '').toLowerCase().trim();
+      if (!['true', 'false', 'a', 'b'].includes(correct)) {
+        errors.push({ row: rowNum, field: 'Correct', message: 'True/False answer must be "True" or "False"' });
+      }
+    }
+
     return errors;
+  };
+
+  const normalizeQuestionType = (type: string): ParsedQuestion['question_type'] => {
+    const t = type.toLowerCase().trim();
+    if (t.includes('true') || t.includes('false') || t === 'tf') return 'true_false';
+    if (t.includes('essay')) return 'essay';
+    if (t.includes('short') || t.includes('fill')) return 'short_answer';
+    return 'mcq';
   };
 
   const normalizeRow = (row: any): Partial<ParsedQuestion> => {
     const questionText = row.Question || row.question_text || row['Question Text'] || '';
     const topic = row.Topic || row.topic || '';
     const type = (row.Type || row.type || row.question_type || 'mcq').toLowerCase();
-
-    let question_type: ParsedQuestion['question_type'] = 'mcq';
-    if (type.includes('true') || type.includes('false') || type === 'tf') {
-      question_type = 'true_false';
-    } else if (type.includes('essay')) {
-      question_type = 'essay';
-    } else if (type.includes('short') || type.includes('fill')) {
-      question_type = 'short_answer';
-    }
+    const question_type = normalizeQuestionType(type);
 
     let choices: Record<string, string> | undefined;
     if (question_type === 'mcq') {
@@ -241,25 +359,22 @@ export default function BulkImport({
           choices![letter] = choice.trim();
         }
       });
-      if (Object.keys(choices).length === 0) {
-        choices = { A: 'Option A', B: 'Option B', C: 'Option C', D: 'Option D' };
-      }
     }
 
-    // Read metadata columns from CSV
     const csvCategory = row.Category || row.category || '';
     const csvSpecialization = row.Specialization || row.specialization || '';
     const csvSubjectCode = row.SubjectCode || row.subject_code || row['Subject Code'] || '';
     const csvSubjectDescription = row.SubjectDescription || row.subject_description || row['Subject Description'] || '';
+    const points = Number(row.Points || row.points_value || row['Points'] || 1);
 
     return {
       topic: topic.trim(),
       question_text: questionText.trim(),
       question_type,
       choices,
-      correct_answer: row.Correct || row.correct_answer || row['Correct Answer'] || 'A',
-      bloom_level: row.Bloom || row.bloom_level || row['Bloom Level'],
-      difficulty: row.Difficulty || row.difficulty,
+      correct_answer: row.Correct || row.correct_answer || row['Correct Answer'] || '',
+      bloom_level: (row.Bloom || row.bloom_level || row['Bloom Level'] || '').toLowerCase().trim(),
+      difficulty: (row.Difficulty || row.difficulty || '').toLowerCase().trim(),
       knowledge_dimension: row.KnowledgeDimension || row.knowledge_dimension || row['Knowledge Dimension'],
       subject: row.Subject || row.subject || undefined,
       grade_level: row['Grade Level'] || row.grade_level || undefined,
@@ -269,16 +384,46 @@ export default function BulkImport({
       specialization: csvSpecialization.trim() || undefined,
       subject_code: csvSubjectCode.trim() || undefined,
       subject_description: csvSubjectDescription.trim() || undefined,
+      points_value: isNaN(points) ? 1 : points,
     };
   };
 
-  /** Step 1: Parse, classify, resolve metadata, then show verification */
+  /** Check for duplicate questions against existing bank */
+  const checkDuplicates = async (questions: ParsedQuestion[]): Promise<{ unique: ParsedQuestion[]; duplicateCount: number }> => {
+    try {
+      const existing = await Questions.getAll({});
+      const existingTexts = new Set(existing.map(q => q.question_text.toLowerCase().trim()));
+      
+      const unique: ParsedQuestion[] = [];
+      let duplicateCount = 0;
+
+      // Also check within the import batch itself
+      const seenInBatch = new Set<string>();
+
+      for (const q of questions) {
+        const normalized = q.question_text.toLowerCase().trim();
+        if (existingTexts.has(normalized) || seenInBatch.has(normalized)) {
+          duplicateCount++;
+        } else {
+          seenInBatch.add(normalized);
+          unique.push(q);
+        }
+      }
+
+      return { unique, duplicateCount };
+    } catch (error) {
+      console.warn('Duplicate check failed, proceeding without:', error);
+      return { unique: questions, duplicateCount: 0 };
+    }
+  };
+
+  /** Step 1: Parse, validate, classify, resolve metadata, then show verification */
   const analyzeAndClassify = async () => {
     if (!file) return;
 
     setIsProcessing(true);
     setProgress(0);
-    setErrors([]);
+    setRowErrors([]);
 
     try {
       let rawData: any[];
@@ -286,36 +431,58 @@ export default function BulkImport({
       if (file.name.endsWith('.pdf')) {
         setCurrentStep('Extracting text from PDF...');
         rawData = await extractQuestionsFromPDF(file);
-        setProgress(20);
+        setProgress(10);
       } else {
         setCurrentStep('Parsing CSV file...');
         const parseResult = await new Promise<Papa.ParseResult<any>>((resolve, reject) => {
           Papa.parse(file, { header: true, skipEmptyLines: true, complete: resolve, error: reject });
         });
         rawData = parseResult.data;
-        setProgress(20);
+        setProgress(10);
       }
 
-      setCurrentStep('Validating data...');
-      const validationErrors: string[] = [];
-      const normalizedData: ParsedQuestion[] = [];
+      setCurrentStep('Validating required fields...');
+      const allErrors: RowError[] = [];
+      const validRows: { index: number; data: any }[] = [];
 
       rawData.forEach((row, index) => {
-        const rowErrors = validateRow(row, index);
-        validationErrors.push(...rowErrors);
-        if (rowErrors.length === 0) {
-          const normalized = normalizeRow(row);
-          normalizedData.push({
-            ...normalized,
-            created_by: 'teacher',
-            approved: false,
-            needs_review: true,
-          } as ParsedQuestion);
+        const errors = validateRow(row, index);
+        if (errors.length > 0) {
+          allErrors.push(...errors);
+        } else {
+          validRows.push({ index, data: row });
         }
       });
 
-      if (validationErrors.length > 0) {
-        setErrors(validationErrors);
+      if (allErrors.length > 0) {
+        setRowErrors(allErrors);
+        if (validRows.length === 0) {
+          toast.error(`All ${rawData.length} rows have validation errors. Please fix and re-upload.`);
+          setIsProcessing(false);
+          return;
+        }
+        toast.warning(`${allErrors.length} errors found in ${rawData.length - validRows.length} rows. Processing ${validRows.length} valid rows.`);
+      }
+
+      setProgress(20);
+      const normalizedData: ParsedQuestion[] = validRows.map(({ data }) => ({
+        ...normalizeRow(data),
+        created_by: 'teacher' as const,
+        approved: true,
+        needs_review: false,
+      } as ParsedQuestion));
+
+      // Duplicate detection
+      setCurrentStep('Checking for duplicate questions...');
+      setProgress(30);
+      const { unique, duplicateCount } = await checkDuplicates(normalizedData);
+      
+      if (duplicateCount > 0) {
+        toast.info(`${duplicateCount} duplicate question(s) detected and will be skipped.`);
+      }
+
+      if (unique.length === 0) {
+        toast.error('All questions are duplicates of existing ones in the Question Bank.');
         setIsProcessing(false);
         return;
       }
@@ -323,27 +490,22 @@ export default function BulkImport({
       setProgress(40);
       setCurrentStep('Classifying questions with AI...');
 
-      // AI classification
+      // AI classification - only fill missing fields
       try {
-        const classificationInput = normalizedData.map(q => ({
+        const classificationInput = unique.map(q => ({
           text: q.question_text,
           type: q.question_type,
           topic: q.topic
         }));
 
         const classifications = await classifyQuestions(classificationInput);
-        normalizedData.forEach((question, index) => {
+        unique.forEach((question, index) => {
           const classification = classifications[index];
           if (classification) {
-            question.bloom_level = question.bloom_level || classification.bloom_level;
-            question.difficulty = question.difficulty || classification.difficulty;
-            question.knowledge_dimension = question.knowledge_dimension || classification.knowledge_dimension;
-            question.ai_confidence_score = classification.confidence;
-            question.needs_review = classification.needs_review;
-            if (classification.confidence >= 0.85) {
-              question.approved = true;
-              question.needs_review = false;
+            if (!question.knowledge_dimension) {
+              question.knowledge_dimension = classification.knowledge_dimension;
             }
+            question.ai_confidence_score = classification.confidence;
           }
         });
         setClassificationResults(classifications);
@@ -351,12 +513,11 @@ export default function BulkImport({
       } catch (aiError) {
         console.warn('AI classification unavailable, using rule-based:', aiError);
         toast.info('Using rule-based classification (AI unavailable)');
-        normalizedData.forEach((question) => {
-          if (!question.bloom_level) question.bloom_level = classifyBloom(question.question_text);
-          if (!question.knowledge_dimension) question.knowledge_dimension = detectKnowledgeDimension(question.question_text, question.question_type);
-          if (!question.difficulty) question.difficulty = inferDifficulty(question.bloom_level as any, question.question_text, question.question_type);
+        unique.forEach((question) => {
+          if (!question.knowledge_dimension) {
+            question.knowledge_dimension = detectKnowledgeDimension(question.question_text, question.question_type);
+          }
           question.ai_confidence_score = 0.6;
-          question.needs_review = true;
         });
       }
 
@@ -364,7 +525,7 @@ export default function BulkImport({
       setCurrentStep('Resolving subject metadata...');
 
       // Resolve metadata for each question
-      normalizedData.forEach((q) => {
+      unique.forEach((q) => {
         const resolved = resolveSubjectMetadata({
           subject: q.subject,
           topic: q.topic,
@@ -381,19 +542,23 @@ export default function BulkImport({
 
       setProgress(100);
       setCurrentStep('Analysis complete');
-      setVerificationData(normalizedData);
+      setVerificationData(unique);
       setImportStep('verification');
-      toast.success(`Analyzed ${normalizedData.length} questions. Please verify before saving.`);
+      
+      const msg = duplicateCount > 0 
+        ? `Analyzed ${unique.length} unique questions (${duplicateCount} duplicates skipped). Please verify before saving.`
+        : `Analyzed ${unique.length} questions. Please verify before saving.`;
+      toast.success(msg);
     } catch (error) {
       console.error('Analysis error:', error);
       toast.error(`Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setErrors([error instanceof Error ? error.message : 'Unknown error occurred']);
+      setRowErrors([{ row: 0, field: 'System', message: error instanceof Error ? error.message : 'Unknown error occurred' }]);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  /** Step 2: After admin verifies, save to database */
+  /** Step 2: Save verified questions to database - all auto-approved */
   const saveVerifiedQuestions = async () => {
     setIsProcessing(true);
     setProgress(0);
@@ -414,12 +579,12 @@ export default function BulkImport({
         choices: q.choices || {},
         correct_answer: q.correct_answer || '',
         bloom_level: (q.bloom_level || 'understanding').toLowerCase(),
-        difficulty: (q.difficulty || 'average').toLowerCase(),
+        difficulty: (q.difficulty || 'moderate').toLowerCase(),
         knowledge_dimension: normalizeKD(q.knowledge_dimension),
-        created_by: 'teacher' as const,
-        approved: false,
+        created_by: 'bulk_import' as const,
+        approved: true,
         ai_confidence_score: q.ai_confidence_score || 0.5,
-        needs_review: (q.needs_review !== false),
+        needs_review: false,
         category: q.category || '',
         specialization: q.specialization || '',
         subject_code: q.subject_code || '',
@@ -442,26 +607,29 @@ export default function BulkImport({
       const stats: ImportStats = {
         total: verificationData.length,
         processed: verificationData.length,
-        approved: verificationData.filter(q => q.approved).length,
-        needsReview: verificationData.filter(q => q.needs_review).length,
+        duplicatesSkipped: 0,
         byBloom: {},
         byDifficulty: {},
         byTopic: {},
+        byCategory: {},
       };
       verificationData.forEach((q) => {
         stats.byBloom[q.bloom_level!] = (stats.byBloom[q.bloom_level!] || 0) + 1;
         stats.byDifficulty[q.difficulty!] = (stats.byDifficulty[q.difficulty!] || 0) + 1;
         stats.byTopic[q.topic] = (stats.byTopic[q.topic] || 0) + 1;
+        if (q.category) {
+          stats.byCategory[q.category] = (stats.byCategory[q.category] || 0) + 1;
+        }
       });
 
       setResults(stats);
       setImportStep('results');
-      toast.success(`Successfully imported ${verificationData.length} questions!`);
+      toast.success(`Successfully imported ${verificationData.length} questions to the Question Bank!`);
       onImportComplete();
     } catch (error) {
       console.error('Import error:', error);
       toast.error(`Import failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setErrors([error instanceof Error ? error.message : 'Unknown error occurred']);
+      setRowErrors([{ row: 0, field: 'System', message: error instanceof Error ? error.message : 'Unknown error occurred' }]);
       setImportStep('verification');
     } finally {
       setIsProcessing(false);
@@ -473,18 +641,15 @@ export default function BulkImport({
       const updated = [...prev];
       (updated[index] as any)[field] = value;
 
-      // When category changes, reset specialization/subject
       if (field === 'category') {
         updated[index].specialization = '';
         updated[index].subject_code = '';
         updated[index].subject_description = '';
       }
-      // When specialization changes, reset subject
       if (field === 'specialization') {
         updated[index].subject_code = '';
         updated[index].subject_description = '';
       }
-      // When subject_code changes, auto-fill description
       if (field === 'subject_code' && updated[index].category && updated[index].specialization) {
         const subjects = getSubjectCodes(updated[index].category!, updated[index].specialization!);
         const match = subjects.find(s => s.code === value);
@@ -510,6 +675,7 @@ export default function BulkImport({
         Bloom: 'remembering',
         Difficulty: 'easy',
         KnowledgeDimension: 'factual',
+        Points: '1',
         Category: 'Major',
         Specialization: 'IT',
         SubjectCode: '101',
@@ -525,8 +691,9 @@ export default function BulkImport({
         D: '',
         Correct: 'Conceptual models show high-level entities and relationships, while logical models include detailed attributes and constraints.',
         Bloom: 'understanding',
-        Difficulty: 'average',
+        Difficulty: 'moderate',
         KnowledgeDimension: 'conceptual',
+        Points: '5',
         Category: 'Major',
         Specialization: 'IS',
         SubjectCode: '102',
@@ -548,6 +715,12 @@ export default function BulkImport({
   };
 
   const categories = Object.keys(CATEGORY_CONFIG);
+
+  // Group errors by row for better display
+  const groupedErrors = rowErrors.reduce<Record<number, RowError[]>>((acc, err) => {
+    (acc[err.row] = acc[err.row] || []).push(err);
+    return acc;
+  }, {});
 
   return (
     <div className="space-y-6">
@@ -586,9 +759,14 @@ export default function BulkImport({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground mb-2">
-            Download our CSV template to ensure your data is formatted correctly. The template includes columns for <strong>Category</strong>, <strong>Specialization</strong>, <strong>Subject Code</strong>, and <strong>Subject Description</strong>.
+          <p className="text-sm text-muted-foreground mb-3">
+            Download our CSV template to ensure your data is formatted correctly. The template includes all required columns:
           </p>
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {['Topic', 'Question', 'Type', 'A/B/C/D', 'Correct', 'Bloom', 'Difficulty', 'Points', 'Category', 'Specialization', 'SubjectCode', 'SubjectDescription'].map(col => (
+              <Badge key={col} variant="secondary" className="text-xs">{col}</Badge>
+            ))}
+          </div>
           <Button onClick={downloadTemplate} variant="outline">
             <Download className="h-4 w-4 mr-2" />
             Download Template
@@ -665,7 +843,7 @@ export default function BulkImport({
               </table>
             </div>
             <p className="text-sm text-muted-foreground mt-2">
-              Showing first 5 rows. Click "Analyze & Classify" to process all questions.
+              Showing first 5 rows. Click "Analyze & Classify" to validate and process all questions.
             </p>
           </CardContent>
         </Card>
@@ -680,11 +858,9 @@ export default function BulkImport({
           <CardContent>
             <div className="space-y-2">
               <label className="text-sm font-medium">Default Topic for All Questions</label>
-              <input
-                type="text"
+              <Input
                 value={selectedTopic}
                 onChange={(e) => setSelectedTopic(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md bg-background"
                 placeholder="Enter topic name"
               />
             </div>
@@ -692,22 +868,37 @@ export default function BulkImport({
         </Card>
       )}
 
-      {/* Errors */}
-      {errors.length > 0 && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            <div className="space-y-1">
-              <p className="font-medium">Import errors found:</p>
-              <ul className="list-disc list-inside space-y-1">
-                {errors.slice(0, 10).map((error, index) => (
-                  <li key={index} className="text-sm">{error}</li>
-                ))}
-              </ul>
-              {errors.length > 10 && <p className="text-sm">... and {errors.length - 10} more errors</p>}
+      {/* Validation Errors */}
+      {rowErrors.length > 0 && (
+        <Card className="border-destructive">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Validation Errors ({rowErrors.length} issues in {Object.keys(groupedErrors).length} rows)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3 max-h-64 overflow-y-auto">
+              {Object.entries(groupedErrors).slice(0, 20).map(([rowNum, errors]) => (
+                <div key={rowNum} className="p-3 bg-destructive/5 rounded-lg border border-destructive/20">
+                  <p className="font-medium text-sm mb-1">
+                    {Number(rowNum) === 0 ? 'System Error' : `Row ${rowNum}`}
+                  </p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    {errors.map((err, i) => (
+                      <li key={i} className="text-sm text-muted-foreground">
+                        <span className="font-medium text-foreground">{err.field}:</span> {err.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              {Object.keys(groupedErrors).length > 20 && (
+                <p className="text-sm text-muted-foreground">... and {Object.keys(groupedErrors).length - 20} more rows with errors</p>
+              )}
             </div>
-          </AlertDescription>
-        </Alert>
+          </CardContent>
+        </Card>
       )}
 
       {/* Processing */}
@@ -742,7 +933,7 @@ export default function BulkImport({
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
-              Review the auto-resolved metadata below. Click any row to edit Category, Specialization, Subject Code, or Subject Description before saving.
+              Review the auto-resolved metadata below. Click any row to edit Category, Specialization, Subject Code, or Subject Description before saving. All questions will be automatically saved to the Question Bank.
             </p>
             <div className="overflow-x-auto border rounded-lg">
               <table className="w-full text-sm">
@@ -847,18 +1038,14 @@ export default function BulkImport({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-primary">{results.total}</div>
                 <div className="text-sm text-muted-foreground">Total Imported</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-green-500">{results.approved}</div>
-                <div className="text-sm text-muted-foreground">Auto-Approved</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-yellow-500">{results.needsReview}</div>
-                <div className="text-sm text-muted-foreground">Need Review</div>
+                <div className="text-2xl font-bold text-green-500">{results.processed}</div>
+                <div className="text-sm text-muted-foreground">Saved to Question Bank</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-blue-500">{Object.keys(results.byTopic).length}</div>
@@ -866,7 +1053,7 @@ export default function BulkImport({
               </div>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-4">
+            <div className="grid md:grid-cols-4 gap-4">
               <div>
                 <h4 className="font-medium mb-2">By Bloom Level</h4>
                 <div className="space-y-1">
@@ -884,6 +1071,17 @@ export default function BulkImport({
                   {Object.entries(results.byDifficulty).map(([difficulty, count]) => (
                     <div key={difficulty} className="flex justify-between text-sm">
                       <span className="capitalize">{difficulty}</span>
+                      <Badge variant="secondary">{count}</Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="font-medium mb-2">By Category</h4>
+                <div className="space-y-1">
+                  {Object.entries(results.byCategory).map(([cat, count]) => (
+                    <div key={cat} className="flex justify-between text-sm">
+                      <span>{cat}</span>
                       <Badge variant="secondary">{count}</Badge>
                     </div>
                   ))}
@@ -909,7 +1107,6 @@ export default function BulkImport({
                 <h4 className="font-semibold">AI Classification Analysis</h4>
                 <div className="text-sm space-y-2">
                   <p><strong>Average Confidence:</strong> {(classificationResults.reduce((sum, c) => sum + c.confidence, 0) / classificationResults.length * 100).toFixed(1)}%</p>
-                  <p><strong>Questions Needing Review:</strong> {classificationResults.filter(c => c.needs_review).length}</p>
                 </div>
               </div>
             </CardContent>
