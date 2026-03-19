@@ -313,17 +313,27 @@ export default function BulkImport({
 
   const normalizeRow = (row: any): Partial<ParsedQuestion> => {
     const questionText = row.Question || row.question_text || row['Question Text'] || '';
-    const topic = row.Topic || row.topic || '';
-    const type = (row.Type || row.type || row.question_type || 'mcq').toLowerCase();
-    const question_type = normalizeQuestionType(type);
+    const topic = row.Topic || row.topic || selectedTopic || 'General';
+    const type = (row.Type || row.type || row.question_type || '').toLowerCase();
+
+    // Auto-detect question type from content if not specified
+    const hasChoices = !!(row.A || row['Choice A'] || row.B || row['Choice B']);
+    let question_type: ParsedQuestion['question_type'];
+    if (type) {
+      question_type = normalizeQuestionType(type);
+    } else if (hasChoices) {
+      question_type = 'mcq';
+    } else {
+      question_type = 'essay';
+    }
 
     let choices: Record<string, string> | undefined;
     if (question_type === 'mcq') {
       choices = {};
       ['A', 'B', 'C', 'D', 'E', 'F'].forEach((letter) => {
         const choice = row[letter] || row[`Choice ${letter}`] || row[`choice_${letter.toLowerCase()}`];
-        if (choice && choice.trim()) {
-          choices![letter] = choice.trim();
+        if (choice && choice.toString().trim()) {
+          choices![letter] = choice.toString().trim();
         }
       });
     }
@@ -334,14 +344,18 @@ export default function BulkImport({
     const csvSubjectDescription = row.SubjectDescription || row.subject_description || row['Subject Description'] || '';
     const points = Number(row.Points || row.points_value || row['Points'] || 1);
 
+    // Use CSV values if present, otherwise use defaults from the UI
+    const bloom = (row.Bloom || row.bloom_level || row['Bloom Level'] || '').toLowerCase().trim();
+    const difficulty = (row.Difficulty || row.difficulty || '').toLowerCase().trim();
+
     return {
       topic: topic.trim(),
       question_text: questionText.trim(),
       question_type,
       choices,
       correct_answer: row.Correct || row.correct_answer || row['Correct Answer'] || '',
-      bloom_level: (row.Bloom || row.bloom_level || row['Bloom Level'] || '').toLowerCase().trim(),
-      difficulty: (row.Difficulty || row.difficulty || '').toLowerCase().trim(),
+      bloom_level: bloom || undefined,
+      difficulty: difficulty || undefined,
       knowledge_dimension: row.KnowledgeDimension || row.knowledge_dimension || row['Knowledge Dimension'],
       subject: row.Subject || row.subject || undefined,
       grade_level: row['Grade Level'] || row.grade_level || undefined,
