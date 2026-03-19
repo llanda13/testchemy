@@ -321,12 +321,12 @@ export default function BulkImport({
   };
 
   const normalizeRow = (row: any): Partial<ParsedQuestion> => {
-    const questionText = row.Question || row.question_text || row['Question Text'] || '';
-    const topic = row.Topic || row.topic || selectedTopic || 'General';
-    const type = (row.Type || row.type || row.question_type || '').toLowerCase();
+    const questionText = getField(row, 'Question Text', 'Question', 'question_text');
+    const topic = getField(row, 'Topic', 'topic') || selectedTopic || 'General';
+    const type = getField(row, 'Type', 'type', 'question_type').toLowerCase();
 
     // Auto-detect question type from content if not specified
-    const hasChoices = !!(row.A || row['Choice A'] || row.B || row['Choice B']);
+    const hasChoices = !!(getField(row, 'Option A', 'A', 'Choice A') || getField(row, 'Option B', 'B', 'Choice B'));
     let question_type: ParsedQuestion['question_type'];
     if (type) {
       question_type = normalizeQuestionType(type);
@@ -340,40 +340,40 @@ export default function BulkImport({
     if (question_type === 'mcq') {
       choices = {};
       ['A', 'B', 'C', 'D', 'E', 'F'].forEach((letter) => {
-        const choice = row[letter] || row[`Choice ${letter}`] || row[`choice_${letter.toLowerCase()}`];
-        if (choice && choice.toString().trim()) {
-          choices![letter] = choice.toString().trim();
+        const choice = getField(row, `Option ${letter}`, letter, `Choice ${letter}`, `choice_${letter.toLowerCase()}`);
+        if (choice) {
+          choices![letter] = choice;
         }
       });
     }
 
-    const csvCategory = row.Category || row.category || '';
-    const csvSpecialization = row.Specialization || row.specialization || '';
-    const csvSubjectCode = row.SubjectCode || row.subject_code || row['Subject Code'] || '';
-    const csvSubjectDescription = row.SubjectDescription || row.subject_description || row['Subject Description'] || '';
-    const points = Number(row.Points || row.points_value || row['Points'] || 1);
+    const csvCategory = getField(row, 'Category', 'category');
+    const csvSpecialization = getField(row, 'Specialization', 'specialization');
+    const csvSubjectCode = getField(row, 'Subject Code', 'SubjectCode', 'subject_code');
+    const csvSubjectDescription = getField(row, 'Subject Description', 'SubjectDescription', 'subject_description');
+    const points = Number(getField(row, 'Points', 'points_value') || '1');
 
-    // Use CSV values if present, otherwise use defaults from the UI
-    const bloom = (row.Bloom || row.bloom_level || row['Bloom Level'] || '').toLowerCase().trim();
-    const difficulty = (row.Difficulty || row.difficulty || '').toLowerCase().trim();
+    // Use CSV values – support both old and new column names
+    const bloom = getField(row, 'Cognitive Level', 'Bloom', 'bloom_level').toLowerCase();
+    const difficulty = getField(row, 'Cognitive Domain', 'Difficulty', 'difficulty').toLowerCase();
 
     return {
-      topic: topic.trim(),
-      question_text: questionText.trim(),
+      topic: topic,
+      question_text: questionText,
       question_type,
       choices,
-      correct_answer: row.Correct || row.correct_answer || row['Correct Answer'] || '',
+      correct_answer: getField(row, 'Correct Answer', 'Correct', 'correct_answer'),
       bloom_level: bloom || undefined,
       difficulty: difficulty || undefined,
-      knowledge_dimension: row.KnowledgeDimension || row.knowledge_dimension || row['Knowledge Dimension'],
-      subject: row.Subject || row.subject || undefined,
-      grade_level: row['Grade Level'] || row.grade_level || undefined,
-      term: row.Term || row.term || undefined,
+      knowledge_dimension: getField(row, 'KnowledgeDimension', 'knowledge_dimension', 'Knowledge Dimension') || undefined,
+      subject: getField(row, 'Subject', 'subject') || undefined,
+      grade_level: getField(row, 'Grade Level', 'grade_level') || undefined,
+      term: getField(row, 'Term', 'term') || undefined,
       tags: row.Tags ? (Array.isArray(row.Tags) ? row.Tags : row.Tags.split(',').map((t: string) => t.trim())) : undefined,
-      category: csvCategory.trim() || undefined,
-      specialization: csvSpecialization.trim() || undefined,
-      subject_code: csvSubjectCode.trim() || undefined,
-      subject_description: csvSubjectDescription.trim() || undefined,
+      category: csvCategory || undefined,
+      specialization: csvSpecialization || undefined,
+      subject_code: csvSubjectCode || undefined,
+      subject_description: csvSubjectDescription || undefined,
       points_value: isNaN(points) ? 1 : points,
     };
   };
