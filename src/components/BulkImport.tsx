@@ -488,6 +488,13 @@ export default function BulkImport({
             }
             question.ai_confidence_score = classification.confidence;
           }
+          // Fill missing bloom/difficulty with rule-based fallback
+          if (!question.bloom_level) {
+            question.bloom_level = classifyBloom(question.question_text);
+          }
+          if (!question.difficulty) {
+            question.difficulty = inferDifficulty(question.bloom_level as any, question.question_text);
+          }
         });
         setClassificationResults(classifications);
         toast.success('AI classification completed');
