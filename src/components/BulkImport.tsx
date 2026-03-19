@@ -502,7 +502,7 @@ export default function BulkImport({
             question.bloom_level = classifyBloom(question.question_text);
           }
           if (!question.difficulty) {
-            question.difficulty = inferDifficulty(question.question_text, question.bloom_level as any);
+            question.difficulty = inferDifficulty(question.bloom_level as any, question.question_text);
           }
           question.ai_confidence_score = 0.6;
         });
