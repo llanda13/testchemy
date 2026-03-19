@@ -218,85 +218,94 @@ export default function BulkImport({
     }
   };
 
-  /** Comprehensive row validation - only Question text is strictly required.
-   *  Metadata fields (Category, Specialization, Bloom, etc.) are optional in CSV
-   *  and can be filled with defaults or edited in the verification step. */
+  // Helper to read a field from a row using multiple possible column names
+  const getField = (row: any, ...keys: string[]): string => {
+    for (const key of keys) {
+      if (row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== '') {
+        return String(row[key]).trim();
+      }
+    }
+    return '';
+  };
+
+  /** Comprehensive row validation - only Question Text is strictly required.
+   *  Metadata fields are optional in CSV and can be filled in the verification step. */
   const validateRow = (row: any, index: number): RowError[] => {
     const errors: RowError[] = [];
     const rowNum = index + 1;
 
     // Required: Question text
-    const questionText = row.Question || row.question_text || row['Question Text'] || '';
-    if (!questionText.trim()) {
-      errors.push({ row: rowNum, field: 'Question', message: 'Question text is required' });
-    } else if (questionText.trim().length < 10) {
-      errors.push({ row: rowNum, field: 'Question', message: 'Question text is too short (minimum 10 characters)' });
+    const questionText = getField(row, 'Question Text', 'Question', 'question_text');
+    if (!questionText) {
+      errors.push({ row: rowNum, field: 'Question Text', message: 'Question text is required' });
+    } else if (questionText.length < 10) {
+      errors.push({ row: rowNum, field: 'Question Text', message: 'Question text is too short (minimum 10 characters)' });
     }
 
     // Validate Category only if provided
-    const category = row.Category || row.category || '';
-    if (category.trim() && !Object.keys(CATEGORY_CONFIG).includes(category.trim())) {
+    const category = getField(row, 'Category', 'category');
+    if (category && !Object.keys(CATEGORY_CONFIG).includes(category)) {
       errors.push({ row: rowNum, field: 'Category', message: `Invalid category "${category}". Must be: ${Object.keys(CATEGORY_CONFIG).join(', ')}` });
     }
 
     // Validate Specialization only if provided along with valid category
-    const specialization = row.Specialization || row.specialization || '';
-    if (specialization.trim() && category.trim() && Object.keys(CATEGORY_CONFIG).includes(category.trim())) {
-      const validSpecs = getSpecializations(category.trim());
-      if (!validSpecs.includes(specialization.trim())) {
+    const specialization = getField(row, 'Specialization', 'specialization');
+    if (specialization && category && Object.keys(CATEGORY_CONFIG).includes(category)) {
+      const validSpecs = getSpecializations(category);
+      if (!validSpecs.includes(specialization)) {
         errors.push({ row: rowNum, field: 'Specialization', message: `Invalid specialization "${specialization}" for category "${category}". Valid: ${validSpecs.join(', ')}` });
       }
     }
 
-    // Validate Bloom level only if provided
-    const bloom = (row.Bloom || row.bloom_level || row['Bloom Level'] || '').toLowerCase().trim();
+    // Validate Cognitive Level (Bloom) only if provided
+    const bloom = getField(row, 'Cognitive Level', 'Bloom', 'bloom_level').toLowerCase();
     if (bloom && !VALID_BLOOM_LEVELS.includes(bloom)) {
-      errors.push({ row: rowNum, field: 'Bloom', message: `Invalid Bloom level "${bloom}". Must be: ${VALID_BLOOM_LEVELS.join(', ')}` });
+      errors.push({ row: rowNum, field: 'Cognitive Level', message: `Invalid level "${bloom}". Must be: ${VALID_BLOOM_LEVELS.join(', ')}` });
     }
 
-    // Validate Difficulty only if provided
-    const difficulty = (row.Difficulty || row.difficulty || '').toLowerCase().trim();
+    // Validate Cognitive Domain (Difficulty) only if provided
+    const difficulty = getField(row, 'Cognitive Domain', 'Difficulty', 'difficulty').toLowerCase();
     if (difficulty && !VALID_DIFFICULTIES.includes(difficulty)) {
-      errors.push({ row: rowNum, field: 'Difficulty', message: `Invalid difficulty "${difficulty}". Must be: ${VALID_DIFFICULTIES.join(', ')}` });
+      errors.push({ row: rowNum, field: 'Cognitive Domain', message: `Invalid difficulty "${difficulty}". Must be: Easy, Moderate, Difficult` });
     }
 
     // Validate Points only if provided
-    const points = row.Points || row.points_value || row['Points'] || '';
-    if (points.toString().trim() && (isNaN(Number(points)) || Number(points) <= 0)) {
+    const points = getField(row, 'Points', 'points_value');
+    if (points && (isNaN(Number(points)) || Number(points) <= 0)) {
       errors.push({ row: rowNum, field: 'Points', message: 'Points must be a positive number' });
     }
 
-    // MCQ-specific validation
-    const qType = (row.Type || row.type || row.question_type || '').toLowerCase().trim();
+    // Detect question type
+    const qType = getField(row, 'Type', 'type', 'question_type').toLowerCase();
     const normalizedType = normalizeQuestionType(qType || 'mcq');
 
-    // Detect MCQ from choices presence even if Type not specified
-    const hasChoices = !!(row.A || row['Choice A'] || row.B || row['Choice B']);
+    // Detect MCQ from choices presence
+    const hasChoices = !!(getField(row, 'Option A', 'A', 'Choice A') || getField(row, 'Option B', 'B', 'Choice B'));
 
     if (normalizedType === 'mcq' || hasChoices) {
-      const choiceA = row.A || row['Choice A'] || '';
-      const choiceB = row.B || row['Choice B'] || '';
-      const choiceC = row.C || row['Choice C'] || '';
-      const choiceD = row.D || row['Choice D'] || '';
+      const choiceA = getField(row, 'Option A', 'A', 'Choice A');
+      const choiceB = getField(row, 'Option B', 'B', 'Choice B');
+      const choiceC = getField(row, 'Option C', 'C', 'Choice C');
+      const choiceD = getField(row, 'Option D', 'D', 'Choice D');
       
       if (hasChoices) {
-        const choices = [choiceA, choiceB, choiceC, choiceD].filter(c => c.toString().trim());
+        const choices = [choiceA, choiceB, choiceC, choiceD].filter(c => c);
         if (choices.length > 0 && choices.length < 4) {
-          errors.push({ row: rowNum, field: 'Choices', message: 'Multiple choice questions require exactly 4 choices (A, B, C, D)' });
+          errors.push({ row: rowNum, field: 'Options', message: 'Multiple choice questions require exactly 4 choices (Option A–D)' });
         }
 
-        const correct = (row.Correct || row.correct_answer || row['Correct Answer'] || '').toUpperCase().trim();
+        const correct = getField(row, 'Correct Answer', 'Correct', 'correct_answer').toUpperCase();
         if (choices.length >= 4 && correct && !['A', 'B', 'C', 'D'].includes(correct)) {
-          errors.push({ row: rowNum, field: 'Correct', message: 'Correct answer must be A, B, C, or D' });
+          errors.push({ row: rowNum, field: 'Correct Answer', message: 'Correct answer must be A, B, C, or D' });
         }
       }
     }
 
     // True/False validation
     if (normalizedType === 'true_false') {
-      const correct = (row.Correct || row.correct_answer || row['Correct Answer'] || '').toLowerCase().trim();
+      const correct = getField(row, 'Correct Answer', 'Correct', 'correct_answer').toLowerCase();
       if (correct && !['true', 'false', 'a', 'b'].includes(correct)) {
-        errors.push({ row: rowNum, field: 'Correct', message: 'True/False answer must be "True" or "False"' });
+        errors.push({ row: rowNum, field: 'Correct Answer', message: 'True/False answer must be "True" or "False"' });
       }
     }
 
