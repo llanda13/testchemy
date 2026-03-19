@@ -830,20 +830,25 @@ export default function BulkImport({
         </Card>
       )}
 
-      {/* Topic Selection for PDF */}
-      {file && file.name.endsWith('.pdf') && importStep === 'preview' && (
+      {/* Default Metadata for imported questions */}
+      {file && importStep === 'preview' && (
         <Card>
           <CardHeader>
-            <CardTitle>Topic Assignment</CardTitle>
+            <CardTitle>Default Metadata</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Default Topic for All Questions</label>
-              <Input
-                value={selectedTopic}
-                onChange={(e) => setSelectedTopic(e.target.value)}
-                placeholder="Enter topic name"
-              />
+            <p className="text-sm text-muted-foreground mb-4">
+              Set default values for fields not included in your CSV. These can be edited per-question in the verification step.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Default Topic</label>
+                <Input
+                  value={selectedTopic}
+                  onChange={(e) => setSelectedTopic(e.target.value)}
+                  placeholder="Enter topic name"
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
