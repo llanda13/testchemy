@@ -218,7 +218,9 @@ export default function BulkImport({
     }
   };
 
-  /** Comprehensive row validation with detailed error messages */
+  /** Comprehensive row validation - only Question text is strictly required.
+   *  Metadata fields (Category, Specialization, Bloom, etc.) are optional in CSV
+   *  and can be filled with defaults or edited in the verification step. */
   const validateRow = (row: any, index: number): RowError[] => {
     const errors: RowError[] = [];
     const rowNum = index + 1;
@@ -231,104 +233,69 @@ export default function BulkImport({
       errors.push({ row: rowNum, field: 'Question', message: 'Question text is too short (minimum 10 characters)' });
     }
 
-    // Required: Topic
-    if (!row.Topic && !row.topic) {
-      errors.push({ row: rowNum, field: 'Topic', message: 'Topic is required' });
-    }
-
-    // Required: Category
+    // Validate Category only if provided
     const category = row.Category || row.category || '';
-    if (!category.trim()) {
-      errors.push({ row: rowNum, field: 'Category', message: 'Category is required (Major or GE)' });
-    } else if (!Object.keys(CATEGORY_CONFIG).includes(category.trim())) {
+    if (category.trim() && !Object.keys(CATEGORY_CONFIG).includes(category.trim())) {
       errors.push({ row: rowNum, field: 'Category', message: `Invalid category "${category}". Must be: ${Object.keys(CATEGORY_CONFIG).join(', ')}` });
     }
 
-    // Required: Specialization
+    // Validate Specialization only if provided along with valid category
     const specialization = row.Specialization || row.specialization || '';
-    if (!specialization.trim()) {
-      errors.push({ row: rowNum, field: 'Specialization', message: 'Specialization is required' });
-    } else if (category.trim() && Object.keys(CATEGORY_CONFIG).includes(category.trim())) {
+    if (specialization.trim() && category.trim() && Object.keys(CATEGORY_CONFIG).includes(category.trim())) {
       const validSpecs = getSpecializations(category.trim());
       if (!validSpecs.includes(specialization.trim())) {
         errors.push({ row: rowNum, field: 'Specialization', message: `Invalid specialization "${specialization}" for category "${category}". Valid: ${validSpecs.join(', ')}` });
       }
     }
 
-    // Required: Subject Code
-    const subjectCode = row.SubjectCode || row.subject_code || row['Subject Code'] || '';
-    if (!subjectCode.trim()) {
-      errors.push({ row: rowNum, field: 'Subject Code', message: 'Subject Code is required' });
-    }
-
-    // Required: Subject Description
-    const subjectDesc = row.SubjectDescription || row.subject_description || row['Subject Description'] || '';
-    if (!subjectDesc.trim()) {
-      errors.push({ row: rowNum, field: 'Subject Description', message: 'Subject Description is required' });
-    }
-
-    // Required: Question Type
-    const qType = (row.Type || row.type || row.question_type || '').toLowerCase().trim();
-    if (!qType) {
-      errors.push({ row: rowNum, field: 'Type', message: 'Question Type is required (mcq, true_false, essay, short_answer)' });
-    }
-
-    // Required: Bloom Level (Cognitive Level)
+    // Validate Bloom level only if provided
     const bloom = (row.Bloom || row.bloom_level || row['Bloom Level'] || '').toLowerCase().trim();
-    if (!bloom) {
-      errors.push({ row: rowNum, field: 'Bloom', message: 'Cognitive Level (Bloom) is required' });
-    } else if (!VALID_BLOOM_LEVELS.includes(bloom)) {
+    if (bloom && !VALID_BLOOM_LEVELS.includes(bloom)) {
       errors.push({ row: rowNum, field: 'Bloom', message: `Invalid Bloom level "${bloom}". Must be: ${VALID_BLOOM_LEVELS.join(', ')}` });
     }
 
-    // Required: Difficulty
+    // Validate Difficulty only if provided
     const difficulty = (row.Difficulty || row.difficulty || '').toLowerCase().trim();
-    if (!difficulty) {
-      errors.push({ row: rowNum, field: 'Difficulty', message: 'Difficulty is required (Easy, Moderate, Difficult)' });
-    } else if (!VALID_DIFFICULTIES.includes(difficulty)) {
+    if (difficulty && !VALID_DIFFICULTIES.includes(difficulty)) {
       errors.push({ row: rowNum, field: 'Difficulty', message: `Invalid difficulty "${difficulty}". Must be: ${VALID_DIFFICULTIES.join(', ')}` });
     }
 
-    // Required: Points Value
+    // Validate Points only if provided
     const points = row.Points || row.points_value || row['Points'] || '';
-    if (!points.toString().trim()) {
-      errors.push({ row: rowNum, field: 'Points', message: 'Points value is required' });
-    } else if (isNaN(Number(points)) || Number(points) <= 0) {
+    if (points.toString().trim() && (isNaN(Number(points)) || Number(points) <= 0)) {
       errors.push({ row: rowNum, field: 'Points', message: 'Points must be a positive number' });
     }
 
     // MCQ-specific validation
-    const normalizedType = normalizeQuestionType(qType);
-    if (normalizedType === 'mcq') {
+    const qType = (row.Type || row.type || row.question_type || '').toLowerCase().trim();
+    const normalizedType = normalizeQuestionType(qType || 'mcq');
+
+    // Detect MCQ from choices presence even if Type not specified
+    const hasChoices = !!(row.A || row['Choice A'] || row.B || row['Choice B']);
+
+    if (normalizedType === 'mcq' || hasChoices) {
       const choiceA = row.A || row['Choice A'] || '';
       const choiceB = row.B || row['Choice B'] || '';
       const choiceC = row.C || row['Choice C'] || '';
       const choiceD = row.D || row['Choice D'] || '';
       
-      const choices = [choiceA, choiceB, choiceC, choiceD].filter(c => c.trim());
-      if (choices.length < 4) {
-        errors.push({ row: rowNum, field: 'Choices', message: 'Multiple choice questions require exactly 4 choices (A, B, C, D)' });
-      }
-
-      const correct = (row.Correct || row.correct_answer || row['Correct Answer'] || '').toUpperCase().trim();
-      if (!correct || !['A', 'B', 'C', 'D'].includes(correct)) {
-        errors.push({ row: rowNum, field: 'Correct', message: 'Correct answer must be A, B, C, or D' });
-      }
-
-      // Check for placeholder/empty distractors
-      const filledChoices = [choiceA, choiceB, choiceC, choiceD];
-      filledChoices.forEach((choice, i) => {
-        const letter = String.fromCharCode(65 + i);
-        if (choice.trim() && choice.trim().length < 2) {
-          errors.push({ row: rowNum, field: `Choice ${letter}`, message: `Choice ${letter} is too short - distractors must be plausible` });
+      if (hasChoices) {
+        const choices = [choiceA, choiceB, choiceC, choiceD].filter(c => c.toString().trim());
+        if (choices.length > 0 && choices.length < 4) {
+          errors.push({ row: rowNum, field: 'Choices', message: 'Multiple choice questions require exactly 4 choices (A, B, C, D)' });
         }
-      });
+
+        const correct = (row.Correct || row.correct_answer || row['Correct Answer'] || '').toUpperCase().trim();
+        if (choices.length >= 4 && correct && !['A', 'B', 'C', 'D'].includes(correct)) {
+          errors.push({ row: rowNum, field: 'Correct', message: 'Correct answer must be A, B, C, or D' });
+        }
+      }
     }
 
     // True/False validation
     if (normalizedType === 'true_false') {
       const correct = (row.Correct || row.correct_answer || row['Correct Answer'] || '').toLowerCase().trim();
-      if (!['true', 'false', 'a', 'b'].includes(correct)) {
+      if (correct && !['true', 'false', 'a', 'b'].includes(correct)) {
         errors.push({ row: rowNum, field: 'Correct', message: 'True/False answer must be "True" or "False"' });
       }
     }
@@ -346,17 +313,27 @@ export default function BulkImport({
 
   const normalizeRow = (row: any): Partial<ParsedQuestion> => {
     const questionText = row.Question || row.question_text || row['Question Text'] || '';
-    const topic = row.Topic || row.topic || '';
-    const type = (row.Type || row.type || row.question_type || 'mcq').toLowerCase();
-    const question_type = normalizeQuestionType(type);
+    const topic = row.Topic || row.topic || selectedTopic || 'General';
+    const type = (row.Type || row.type || row.question_type || '').toLowerCase();
+
+    // Auto-detect question type from content if not specified
+    const hasChoices = !!(row.A || row['Choice A'] || row.B || row['Choice B']);
+    let question_type: ParsedQuestion['question_type'];
+    if (type) {
+      question_type = normalizeQuestionType(type);
+    } else if (hasChoices) {
+      question_type = 'mcq';
+    } else {
+      question_type = 'essay';
+    }
 
     let choices: Record<string, string> | undefined;
     if (question_type === 'mcq') {
       choices = {};
       ['A', 'B', 'C', 'D', 'E', 'F'].forEach((letter) => {
         const choice = row[letter] || row[`Choice ${letter}`] || row[`choice_${letter.toLowerCase()}`];
-        if (choice && choice.trim()) {
-          choices![letter] = choice.trim();
+        if (choice && choice.toString().trim()) {
+          choices![letter] = choice.toString().trim();
         }
       });
     }
@@ -367,14 +344,18 @@ export default function BulkImport({
     const csvSubjectDescription = row.SubjectDescription || row.subject_description || row['Subject Description'] || '';
     const points = Number(row.Points || row.points_value || row['Points'] || 1);
 
+    // Use CSV values if present, otherwise use defaults from the UI
+    const bloom = (row.Bloom || row.bloom_level || row['Bloom Level'] || '').toLowerCase().trim();
+    const difficulty = (row.Difficulty || row.difficulty || '').toLowerCase().trim();
+
     return {
       topic: topic.trim(),
       question_text: questionText.trim(),
       question_type,
       choices,
       correct_answer: row.Correct || row.correct_answer || row['Correct Answer'] || '',
-      bloom_level: (row.Bloom || row.bloom_level || row['Bloom Level'] || '').toLowerCase().trim(),
-      difficulty: (row.Difficulty || row.difficulty || '').toLowerCase().trim(),
+      bloom_level: bloom || undefined,
+      difficulty: difficulty || undefined,
       knowledge_dimension: row.KnowledgeDimension || row.knowledge_dimension || row['Knowledge Dimension'],
       subject: row.Subject || row.subject || undefined,
       grade_level: row['Grade Level'] || row.grade_level || undefined,
@@ -507,6 +488,13 @@ export default function BulkImport({
             }
             question.ai_confidence_score = classification.confidence;
           }
+          // Fill missing bloom/difficulty with rule-based fallback
+          if (!question.bloom_level) {
+            question.bloom_level = classifyBloom(question.question_text);
+          }
+          if (!question.difficulty) {
+            question.difficulty = inferDifficulty(question.bloom_level as any, question.question_text);
+          }
         });
         setClassificationResults(classifications);
         toast.success('AI classification completed');
@@ -516,6 +504,12 @@ export default function BulkImport({
         unique.forEach((question) => {
           if (!question.knowledge_dimension) {
             question.knowledge_dimension = detectKnowledgeDimension(question.question_text, question.question_type);
+          }
+          if (!question.bloom_level) {
+            question.bloom_level = classifyBloom(question.question_text);
+          }
+          if (!question.difficulty) {
+            question.difficulty = inferDifficulty(question.bloom_level as any, question.question_text);
           }
           question.ai_confidence_score = 0.6;
         });
@@ -849,20 +843,25 @@ export default function BulkImport({
         </Card>
       )}
 
-      {/* Topic Selection for PDF */}
-      {file && file.name.endsWith('.pdf') && importStep === 'preview' && (
+      {/* Default Metadata for imported questions */}
+      {file && importStep === 'preview' && (
         <Card>
           <CardHeader>
-            <CardTitle>Topic Assignment</CardTitle>
+            <CardTitle>Default Metadata</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Default Topic for All Questions</label>
-              <Input
-                value={selectedTopic}
-                onChange={(e) => setSelectedTopic(e.target.value)}
-                placeholder="Enter topic name"
-              />
+            <p className="text-sm text-muted-foreground mb-4">
+              Set default values for fields not included in your CSV. These can be edited per-question in the verification step.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Default Topic</label>
+                <Input
+                  value={selectedTopic}
+                  onChange={(e) => setSelectedTopic(e.target.value)}
+                  placeholder="Enter topic name"
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
