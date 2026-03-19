@@ -760,7 +760,7 @@ export default function BulkImport({
             Download our CSV template to ensure your data is formatted correctly. The template includes all required columns:
           </p>
           <div className="flex flex-wrap gap-1.5 mb-3">
-            {['Topic', 'Question', 'Type', 'A/B/C/D', 'Correct', 'Bloom', 'Difficulty', 'Points', 'Category', 'Specialization', 'SubjectCode', 'SubjectDescription'].map(col => (
+            {['Category', 'Specialization', 'Subject Code', 'Subject Description', 'Question Text', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Answer', 'Cognitive Domain', 'Cognitive Level', 'Points'].map(col => (
               <Badge key={col} variant="secondary" className="text-xs">{col}</Badge>
             ))}
           </div>
