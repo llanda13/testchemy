@@ -218,85 +218,94 @@ export default function BulkImport({
     }
   };
 
-  /** Comprehensive row validation - only Question text is strictly required.
-   *  Metadata fields (Category, Specialization, Bloom, etc.) are optional in CSV
-   *  and can be filled with defaults or edited in the verification step. */
+  // Helper to read a field from a row using multiple possible column names
+  const getField = (row: any, ...keys: string[]): string => {
+    for (const key of keys) {
+      if (row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== '') {
+        return String(row[key]).trim();
+      }
+    }
+    return '';
+  };
+
+  /** Comprehensive row validation - only Question Text is strictly required.
+   *  Metadata fields are optional in CSV and can be filled in the verification step. */
   const validateRow = (row: any, index: number): RowError[] => {
     const errors: RowError[] = [];
     const rowNum = index + 1;
 
     // Required: Question text
-    const questionText = row.Question || row.question_text || row['Question Text'] || '';
-    if (!questionText.trim()) {
-      errors.push({ row: rowNum, field: 'Question', message: 'Question text is required' });
-    } else if (questionText.trim().length < 10) {
-      errors.push({ row: rowNum, field: 'Question', message: 'Question text is too short (minimum 10 characters)' });
+    const questionText = getField(row, 'Question Text', 'Question', 'question_text');
+    if (!questionText) {
+      errors.push({ row: rowNum, field: 'Question Text', message: 'Question text is required' });
+    } else if (questionText.length < 10) {
+      errors.push({ row: rowNum, field: 'Question Text', message: 'Question text is too short (minimum 10 characters)' });
     }
 
     // Validate Category only if provided
-    const category = row.Category || row.category || '';
-    if (category.trim() && !Object.keys(CATEGORY_CONFIG).includes(category.trim())) {
+    const category = getField(row, 'Category', 'category');
+    if (category && !Object.keys(CATEGORY_CONFIG).includes(category)) {
       errors.push({ row: rowNum, field: 'Category', message: `Invalid category "${category}". Must be: ${Object.keys(CATEGORY_CONFIG).join(', ')}` });
     }
 
     // Validate Specialization only if provided along with valid category
-    const specialization = row.Specialization || row.specialization || '';
-    if (specialization.trim() && category.trim() && Object.keys(CATEGORY_CONFIG).includes(category.trim())) {
-      const validSpecs = getSpecializations(category.trim());
-      if (!validSpecs.includes(specialization.trim())) {
+    const specialization = getField(row, 'Specialization', 'specialization');
+    if (specialization && category && Object.keys(CATEGORY_CONFIG).includes(category)) {
+      const validSpecs = getSpecializations(category);
+      if (!validSpecs.includes(specialization)) {
         errors.push({ row: rowNum, field: 'Specialization', message: `Invalid specialization "${specialization}" for category "${category}". Valid: ${validSpecs.join(', ')}` });
       }
     }
 
-    // Validate Bloom level only if provided
-    const bloom = (row.Bloom || row.bloom_level || row['Bloom Level'] || '').toLowerCase().trim();
+    // Validate Cognitive Level (Bloom) only if provided
+    const bloom = getField(row, 'Cognitive Level', 'Bloom', 'bloom_level').toLowerCase();
     if (bloom && !VALID_BLOOM_LEVELS.includes(bloom)) {
-      errors.push({ row: rowNum, field: 'Bloom', message: `Invalid Bloom level "${bloom}". Must be: ${VALID_BLOOM_LEVELS.join(', ')}` });
+      errors.push({ row: rowNum, field: 'Cognitive Level', message: `Invalid level "${bloom}". Must be: ${VALID_BLOOM_LEVELS.join(', ')}` });
     }
 
-    // Validate Difficulty only if provided
-    const difficulty = (row.Difficulty || row.difficulty || '').toLowerCase().trim();
+    // Validate Cognitive Domain (Difficulty) only if provided
+    const difficulty = getField(row, 'Cognitive Domain', 'Difficulty', 'difficulty').toLowerCase();
     if (difficulty && !VALID_DIFFICULTIES.includes(difficulty)) {
-      errors.push({ row: rowNum, field: 'Difficulty', message: `Invalid difficulty "${difficulty}". Must be: ${VALID_DIFFICULTIES.join(', ')}` });
+      errors.push({ row: rowNum, field: 'Cognitive Domain', message: `Invalid difficulty "${difficulty}". Must be: Easy, Moderate, Difficult` });
     }
 
     // Validate Points only if provided
-    const points = row.Points || row.points_value || row['Points'] || '';
-    if (points.toString().trim() && (isNaN(Number(points)) || Number(points) <= 0)) {
+    const points = getField(row, 'Points', 'points_value');
+    if (points && (isNaN(Number(points)) || Number(points) <= 0)) {
       errors.push({ row: rowNum, field: 'Points', message: 'Points must be a positive number' });
     }
 
-    // MCQ-specific validation
-    const qType = (row.Type || row.type || row.question_type || '').toLowerCase().trim();
+    // Detect question type
+    const qType = getField(row, 'Type', 'type', 'question_type').toLowerCase();
     const normalizedType = normalizeQuestionType(qType || 'mcq');
 
-    // Detect MCQ from choices presence even if Type not specified
-    const hasChoices = !!(row.A || row['Choice A'] || row.B || row['Choice B']);
+    // Detect MCQ from choices presence
+    const hasChoices = !!(getField(row, 'Option A', 'A', 'Choice A') || getField(row, 'Option B', 'B', 'Choice B'));
 
     if (normalizedType === 'mcq' || hasChoices) {
-      const choiceA = row.A || row['Choice A'] || '';
-      const choiceB = row.B || row['Choice B'] || '';
-      const choiceC = row.C || row['Choice C'] || '';
-      const choiceD = row.D || row['Choice D'] || '';
+      const choiceA = getField(row, 'Option A', 'A', 'Choice A');
+      const choiceB = getField(row, 'Option B', 'B', 'Choice B');
+      const choiceC = getField(row, 'Option C', 'C', 'Choice C');
+      const choiceD = getField(row, 'Option D', 'D', 'Choice D');
       
       if (hasChoices) {
-        const choices = [choiceA, choiceB, choiceC, choiceD].filter(c => c.toString().trim());
+        const choices = [choiceA, choiceB, choiceC, choiceD].filter(c => c);
         if (choices.length > 0 && choices.length < 4) {
-          errors.push({ row: rowNum, field: 'Choices', message: 'Multiple choice questions require exactly 4 choices (A, B, C, D)' });
+          errors.push({ row: rowNum, field: 'Options', message: 'Multiple choice questions require exactly 4 choices (Option A–D)' });
         }
 
-        const correct = (row.Correct || row.correct_answer || row['Correct Answer'] || '').toUpperCase().trim();
+        const correct = getField(row, 'Correct Answer', 'Correct', 'correct_answer').toUpperCase();
         if (choices.length >= 4 && correct && !['A', 'B', 'C', 'D'].includes(correct)) {
-          errors.push({ row: rowNum, field: 'Correct', message: 'Correct answer must be A, B, C, or D' });
+          errors.push({ row: rowNum, field: 'Correct Answer', message: 'Correct answer must be A, B, C, or D' });
         }
       }
     }
 
     // True/False validation
     if (normalizedType === 'true_false') {
-      const correct = (row.Correct || row.correct_answer || row['Correct Answer'] || '').toLowerCase().trim();
+      const correct = getField(row, 'Correct Answer', 'Correct', 'correct_answer').toLowerCase();
       if (correct && !['true', 'false', 'a', 'b'].includes(correct)) {
-        errors.push({ row: rowNum, field: 'Correct', message: 'True/False answer must be "True" or "False"' });
+        errors.push({ row: rowNum, field: 'Correct Answer', message: 'True/False answer must be "True" or "False"' });
       }
     }
 
@@ -312,12 +321,12 @@ export default function BulkImport({
   };
 
   const normalizeRow = (row: any): Partial<ParsedQuestion> => {
-    const questionText = row.Question || row.question_text || row['Question Text'] || '';
-    const topic = row.Topic || row.topic || selectedTopic || 'General';
-    const type = (row.Type || row.type || row.question_type || '').toLowerCase();
+    const questionText = getField(row, 'Question Text', 'Question', 'question_text');
+    const topic = getField(row, 'Topic', 'topic') || selectedTopic || 'General';
+    const type = getField(row, 'Type', 'type', 'question_type').toLowerCase();
 
     // Auto-detect question type from content if not specified
-    const hasChoices = !!(row.A || row['Choice A'] || row.B || row['Choice B']);
+    const hasChoices = !!(getField(row, 'Option A', 'A', 'Choice A') || getField(row, 'Option B', 'B', 'Choice B'));
     let question_type: ParsedQuestion['question_type'];
     if (type) {
       question_type = normalizeQuestionType(type);
@@ -331,40 +340,40 @@ export default function BulkImport({
     if (question_type === 'mcq') {
       choices = {};
       ['A', 'B', 'C', 'D', 'E', 'F'].forEach((letter) => {
-        const choice = row[letter] || row[`Choice ${letter}`] || row[`choice_${letter.toLowerCase()}`];
-        if (choice && choice.toString().trim()) {
-          choices![letter] = choice.toString().trim();
+        const choice = getField(row, `Option ${letter}`, letter, `Choice ${letter}`, `choice_${letter.toLowerCase()}`);
+        if (choice) {
+          choices![letter] = choice;
         }
       });
     }
 
-    const csvCategory = row.Category || row.category || '';
-    const csvSpecialization = row.Specialization || row.specialization || '';
-    const csvSubjectCode = row.SubjectCode || row.subject_code || row['Subject Code'] || '';
-    const csvSubjectDescription = row.SubjectDescription || row.subject_description || row['Subject Description'] || '';
-    const points = Number(row.Points || row.points_value || row['Points'] || 1);
+    const csvCategory = getField(row, 'Category', 'category');
+    const csvSpecialization = getField(row, 'Specialization', 'specialization');
+    const csvSubjectCode = getField(row, 'Subject Code', 'SubjectCode', 'subject_code');
+    const csvSubjectDescription = getField(row, 'Subject Description', 'SubjectDescription', 'subject_description');
+    const points = Number(getField(row, 'Points', 'points_value') || '1');
 
-    // Use CSV values if present, otherwise use defaults from the UI
-    const bloom = (row.Bloom || row.bloom_level || row['Bloom Level'] || '').toLowerCase().trim();
-    const difficulty = (row.Difficulty || row.difficulty || '').toLowerCase().trim();
+    // Use CSV values – support both old and new column names
+    const bloom = getField(row, 'Cognitive Level', 'Bloom', 'bloom_level').toLowerCase();
+    const difficulty = getField(row, 'Cognitive Domain', 'Difficulty', 'difficulty').toLowerCase();
 
     return {
-      topic: topic.trim(),
-      question_text: questionText.trim(),
+      topic: topic,
+      question_text: questionText,
       question_type,
       choices,
-      correct_answer: row.Correct || row.correct_answer || row['Correct Answer'] || '',
+      correct_answer: getField(row, 'Correct Answer', 'Correct', 'correct_answer'),
       bloom_level: bloom || undefined,
       difficulty: difficulty || undefined,
-      knowledge_dimension: row.KnowledgeDimension || row.knowledge_dimension || row['Knowledge Dimension'],
-      subject: row.Subject || row.subject || undefined,
-      grade_level: row['Grade Level'] || row.grade_level || undefined,
-      term: row.Term || row.term || undefined,
+      knowledge_dimension: getField(row, 'KnowledgeDimension', 'knowledge_dimension', 'Knowledge Dimension') || undefined,
+      subject: getField(row, 'Subject', 'subject') || undefined,
+      grade_level: getField(row, 'Grade Level', 'grade_level') || undefined,
+      term: getField(row, 'Term', 'term') || undefined,
       tags: row.Tags ? (Array.isArray(row.Tags) ? row.Tags : row.Tags.split(',').map((t: string) => t.trim())) : undefined,
-      category: csvCategory.trim() || undefined,
-      specialization: csvSpecialization.trim() || undefined,
-      subject_code: csvSubjectCode.trim() || undefined,
-      subject_description: csvSubjectDescription.trim() || undefined,
+      category: csvCategory || undefined,
+      specialization: csvSpecialization || undefined,
+      subject_code: csvSubjectCode || undefined,
+      subject_description: csvSubjectDescription || undefined,
       points_value: isNaN(points) ? 1 : points,
     };
   };
@@ -658,40 +667,34 @@ export default function BulkImport({
   const downloadTemplate = () => {
     const template = [
       {
-        Topic: 'Requirements Engineering',
-        Question: 'Define what a functional requirement is in software development.',
-        Type: 'mcq',
-        A: 'A requirement that specifies what the system should do',
-        B: 'A requirement that specifies how the system should perform',
-        C: 'A requirement that specifies system constraints',
-        D: 'A requirement that specifies user interface design',
-        Correct: 'A',
-        Bloom: 'remembering',
-        Difficulty: 'easy',
-        KnowledgeDimension: 'factual',
-        Points: '1',
-        Category: 'Major',
-        Specialization: 'IT',
-        SubjectCode: '101',
-        SubjectDescription: 'Introduction to Computing',
+        'Category': 'Major',
+        'Specialization': 'IT',
+        'Subject Code': 'IT101',
+        'Subject Description': 'Introduction to Computing',
+        'Question Text': 'Define what a functional requirement is in software development.',
+        'Option A': 'A requirement that specifies what the system should do',
+        'Option B': 'A requirement that specifies how the system should perform',
+        'Option C': 'A requirement that specifies system constraints',
+        'Option D': 'A requirement that specifies user interface design',
+        'Correct Answer': 'A',
+        'Cognitive Domain': 'Easy',
+        'Cognitive Level': 'Remembering',
+        'Points': '1',
       },
       {
-        Topic: 'Data Modeling',
-        Question: 'Explain the difference between conceptual and logical data models.',
-        Type: 'essay',
-        A: '',
-        B: '',
-        C: '',
-        D: '',
-        Correct: 'Conceptual models show high-level entities and relationships, while logical models include detailed attributes and constraints.',
-        Bloom: 'understanding',
-        Difficulty: 'moderate',
-        KnowledgeDimension: 'conceptual',
-        Points: '5',
-        Category: 'Major',
-        Specialization: 'IS',
-        SubjectCode: '102',
-        SubjectDescription: 'Systems Analysis and Design',
+        'Category': 'Major',
+        'Specialization': 'IS',
+        'Subject Code': 'IS102',
+        'Subject Description': 'Systems Analysis and Design',
+        'Question Text': 'Explain the difference between conceptual and logical data models.',
+        'Option A': '',
+        'Option B': '',
+        'Option C': '',
+        'Option D': '',
+        'Correct Answer': 'Conceptual models show high-level entities and relationships, while logical models include detailed attributes and constraints.',
+        'Cognitive Domain': 'Moderate',
+        'Cognitive Level': 'Understanding',
+        'Points': '5',
       },
     ];
 
@@ -757,7 +760,7 @@ export default function BulkImport({
             Download our CSV template to ensure your data is formatted correctly. The template includes all required columns:
           </p>
           <div className="flex flex-wrap gap-1.5 mb-3">
-            {['Topic', 'Question', 'Type', 'A/B/C/D', 'Correct', 'Bloom', 'Difficulty', 'Points', 'Category', 'Specialization', 'SubjectCode', 'SubjectDescription'].map(col => (
+            {['Category', 'Specialization', 'Subject Code', 'Subject Description', 'Question Text', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Answer', 'Cognitive Domain', 'Cognitive Level', 'Points'].map(col => (
               <Badge key={col} variant="secondary" className="text-xs">{col}</Badge>
             ))}
           </div>
