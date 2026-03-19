@@ -498,6 +498,12 @@ export default function BulkImport({
           if (!question.knowledge_dimension) {
             question.knowledge_dimension = detectKnowledgeDimension(question.question_text, question.question_type);
           }
+          if (!question.bloom_level) {
+            question.bloom_level = classifyBloom(question.question_text);
+          }
+          if (!question.difficulty) {
+            question.difficulty = inferDifficulty(question.question_text, question.bloom_level);
+          }
           question.ai_confidence_score = 0.6;
         });
       }
