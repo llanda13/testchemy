@@ -545,17 +545,27 @@ export default function AIAssistant() {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full max-w-3xl">
                   {(isAdmin ? [
                     { icon: BarChart3, text: "Show me question bank statistics and distribution", color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/50" },
-                    { icon: PlusCircle, text: "Generate 5 MCQ questions about Data Structures", color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/50" },
+                    { icon: PlusCircle, text: "Generate 10 MCQ questions about Data Structures", color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/50" },
                     { icon: Wand2, text: "How do I improve question quality for assessments?", color: "text-orange-600", bg: "bg-orange-50 dark:bg-orange-950/30 hover:bg-orange-100 dark:hover:bg-orange-950/50" },
                     { icon: BookOpen, text: "Explain Bloom's Taxonomy with assessment examples", color: "text-rose-600", bg: "bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-950/50" },
+                    { icon: Tag, text: "Classify this: What are the layers of the OSI model?", color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-950/50" },
+                    { icon: ListChecks, text: "Generate 5 True/False questions on Computer Networks", color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-950/50" },
+                    { icon: Target, text: "What makes a good distractor in multiple choice items?", color: "text-teal-600", bg: "bg-teal-50 dark:bg-teal-950/30 hover:bg-teal-100 dark:hover:bg-teal-950/50" },
+                    { icon: FileText, text: "How should I structure a Table of Specifications?", color: "text-indigo-600", bg: "bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-950/50" },
+                    { icon: Lightbulb, text: "Suggest topics for a midterm exam in Database Systems", color: "text-yellow-600", bg: "bg-yellow-50 dark:bg-yellow-950/30 hover:bg-yellow-100 dark:hover:bg-yellow-950/50" },
                   ] : [
                     { icon: PlusCircle, text: "Generate 5 MCQ questions about Photosynthesis", color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/50" },
-                    { icon: Tag, text: "Classify this question: What is the function of mitochondria?", color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-950/50" },
+                    { icon: Tag, text: "Classify this: What is the function of mitochondria?", color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-950/50" },
                     { icon: Wand2, text: "Improve this question: What is the answer of 1+1?", color: "text-orange-600", bg: "bg-orange-50 dark:bg-orange-950/30 hover:bg-orange-100 dark:hover:bg-orange-950/50" },
                     { icon: BookOpen, text: "What are effective strategies for creating assessments?", color: "text-rose-600", bg: "bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-950/50" },
+                    { icon: ListChecks, text: "Create 3 essay questions about the Solar System", color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-950/50" },
+                    { icon: FileText, text: "How do I build a Table of Specifications for my exam?", color: "text-indigo-600", bg: "bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-950/50" },
+                    { icon: Target, text: "Explain the difference between Applying and Analyzing", color: "text-teal-600", bg: "bg-teal-50 dark:bg-teal-950/30 hover:bg-teal-100 dark:hover:bg-teal-950/50" },
+                    { icon: Lightbulb, text: "Suggest topics for a final exam in General Biology", color: "text-yellow-600", bg: "bg-yellow-50 dark:bg-yellow-950/30 hover:bg-yellow-100 dark:hover:bg-yellow-950/50" },
+                    { icon: Search, text: "What Bloom's level is: Compare TCP and UDP protocols?", color: "text-cyan-600", bg: "bg-cyan-50 dark:bg-cyan-950/30 hover:bg-cyan-100 dark:hover:bg-cyan-950/50" },
                   ]).map((starter, idx) => (
                     <button
                       key={idx}
