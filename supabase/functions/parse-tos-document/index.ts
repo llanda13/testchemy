@@ -1,12 +1,32 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders } from '@supabase/supabase-js/cors'
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+function extractJsonFromResponse(response: string): unknown {
+  let cleaned = response
+    .replace(/```json\s*/gi, "")
+    .replace(/```\s*/g, "")
+    .trim();
 
-serve(async (req) => {
+  const jsonStart = cleaned.search(/[\{\[]/);
+  const jsonEnd = cleaned.lastIndexOf(jsonStart !== -1 && cleaned[jsonStart] === '[' ? ']' : '}');
+
+  if (jsonStart === -1 || jsonEnd === -1) {
+    throw new Error("No JSON object found in response");
+  }
+
+  cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    cleaned = cleaned
+      .replace(/,\s*}/g, "}")
+      .replace(/,\s*]/g, "]")
+      .replace(/[\x00-\x1F\x7F]/g, "");
+    return JSON.parse(cleaned);
+  }
+}
+
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -14,7 +34,7 @@ serve(async (req) => {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File;
-    
+
     if (!file) {
       return new Response(JSON.stringify({ error: "No file provided" }), {
         status: 400,
@@ -30,11 +50,9 @@ serve(async (req) => {
       });
     }
 
-    // Read file content as text for AI processing
     const arrayBuffer = await file.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
-    
-    // Convert to base64 for AI processing
+
     let base64Content = "";
     const chunkSize = 8192;
     for (let i = 0; i < uint8Array.length; i += chunkSize) {
@@ -43,12 +61,8 @@ serve(async (req) => {
     }
     base64Content = btoa(base64Content);
 
-    // For text extraction, try to get raw text from PDF
-    let extractedText = "";
-    
-    // Use a simple text extraction approach - send to AI with instructions
-    const openaiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!openaiKey) {
+    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    if (!lovableApiKey) {
       return new Response(JSON.stringify({ error: "AI service not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -84,9 +98,8 @@ Rules:
 - If a field is not found, use an empty string for text fields or 0 for numbers
 - Always return valid JSON, no markdown formatting`;
 
-    // For PDFs, use vision model with base64
     const isPDF = fileName.endsWith(".pdf");
-    
+
     let messages: any[];
     if (isPDF) {
       messages = [
@@ -108,7 +121,6 @@ Rules:
         },
       ];
     } else {
-      // For DOCX, send as text content
       messages = [
         { role: "system", content: systemPrompt },
         {
@@ -118,10 +130,10 @@ Rules:
       ];
     }
 
-    const aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    const aiResponse = await fetch("https://api.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${openaiKey}`,
+        "Authorization": `Bearer ${lovableApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -129,7 +141,6 @@ Rules:
         messages,
         temperature: 0.1,
         max_tokens: 2000,
-        response_format: { type: "json_object" },
       }),
     });
 
@@ -152,17 +163,17 @@ Rules:
       });
     }
 
-    let parsedTOS;
+    let parsedTOS: any;
     try {
-      parsedTOS = JSON.parse(content);
+      parsedTOS = extractJsonFromResponse(content);
     } catch {
+      console.error("Failed to parse AI response:", content);
       return new Response(JSON.stringify({ error: "Failed to parse AI response" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Normalize and validate
     const result = {
       subject_no: String(parsedTOS.subject_no || "").trim(),
       course: String(parsedTOS.course || "").trim(),
@@ -182,7 +193,6 @@ Rules:
         : [],
     };
 
-    // Ensure at least one topic
     if (result.topics.length === 0) {
       result.topics = [{ topic: "General", hours: 3 }];
     }
