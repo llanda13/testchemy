@@ -140,7 +140,7 @@ Rules:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: "google/gemini-3-flash-preview",
         messages,
         temperature: 0.1,
         max_tokens: 2000,
@@ -150,8 +150,16 @@ Rules:
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
       console.error("AI API error:", errorText);
-      return new Response(JSON.stringify({ error: "AI parsing failed. Please try again." }), {
-        status: 500,
+
+      let errorMessage = "AI parsing failed. Please try again.";
+      if (aiResponse.status === 402) {
+        errorMessage = "Lovable AI credits are required. Please add funds to your workspace usage.";
+      } else if (aiResponse.status === 429) {
+        errorMessage = "Lovable AI is rate limited right now. Please try again in a moment.";
+      }
+
+      return new Response(JSON.stringify({ error: errorMessage, details: errorText }), {
+        status: aiResponse.status >= 400 && aiResponse.status < 600 ? aiResponse.status : 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
