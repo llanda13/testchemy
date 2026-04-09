@@ -177,6 +177,15 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
     }
   }, [location.state, reset]);
 
+  // Auto-generate matrix after file upload populates form
+  useEffect(() => {
+    if (autoGeneratePending) {
+      setAutoGeneratePending(false);
+      // Trigger form submission programmatically
+      handleSubmit(onSubmit)();
+    }
+  }, [autoGeneratePending]);
+
   const watchedTotalItems = watch("total_items");
 
   const addTopic = () => {
