@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Edit, Trash2, Save, X, Filter, FileText, BarChart3 } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Questions, type Question } from "@/services/db/questions";
@@ -19,6 +20,7 @@ import { FilterManagement } from "@/components/admin/FilterManagement";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAcademicHierarchy } from "@/hooks/useAcademicHierarchy";
 import { Settings2 } from "lucide-react";
+import { normalizeCategory, normalizeSpecialization } from "@/utils/acronymNormalizer";
 
 const ALL_BLOOM_LEVELS = ["Remembering", "Understanding", "Applying", "Analyzing", "Evaluating", "Creating"];
 
@@ -49,7 +51,7 @@ export default function QuestionBankManager() {
   // Form state
   const [formData, setFormData] = useState({
     question_text: "",
-    question_type: "mcq" as const,
+    question_type: "mcq" as string,
     choices: [] as any[],
     correct_answer: "",
     topic: "",
@@ -138,10 +140,18 @@ export default function QuestionBankManager() {
     }
 
     if (filterCategory !== "all") {
-      result = result.filter((q) => (q as any).category === filterCategory);
+      const normFilter = normalizeCategory(filterCategory) || filterCategory;
+      result = result.filter((q) => {
+        const qCat = normalizeCategory((q as any).category) || (q as any).category;
+        return qCat === normFilter;
+      });
     }
     if (filterSpecialization !== "all") {
-      result = result.filter((q) => (q as any).specialization === filterSpecialization);
+      const normFilter = normalizeSpecialization(filterSpecialization) || filterSpecialization;
+      result = result.filter((q) => {
+        const qSpec = normalizeSpecialization((q as any).specialization) || (q as any).specialization;
+        return qSpec === normFilter;
+      });
     }
     if (filterSubjectCode !== "all") {
       result = result.filter((q) => (q as any).subject_code === filterSubjectCode);
@@ -190,7 +200,10 @@ export default function QuestionBankManager() {
       toast.success("Question created successfully");
       resetForm();
     },
-    onError: () => toast.error("Failed to create question"),
+    onError: (err: any) => {
+      console.error("Create question error:", err);
+      toast.error(`Failed to create question: ${err?.message || "Unknown error"}`);
+    },
   });
 
   const updateMutation = useMutation({
@@ -281,6 +294,35 @@ export default function QuestionBankManager() {
     const finalData = { ...formData };
     if (formCustomCategory) finalData.category = formCustomCategory;
     if (formCustomSpecialization) finalData.specialization = formCustomSpecialization;
+
+    // Normalize acronyms/full forms before saving
+    finalData.category = normalizeCategory(finalData.category) || finalData.category;
+    finalData.specialization = normalizeSpecialization(finalData.specialization) || finalData.specialization;
+
+    // Map difficulty domain checkboxes to the difficulty field (DB expects lowercase)
+    if (!finalData.difficulty && formDifficultyDomain.length > 0) {
+      // Use the first selected difficulty, lowercased to match DB constraint
+      finalData.difficulty = formDifficultyDomain[0].toLowerCase();
+    }
+
+    // Sync bloom_level from cognitive_level if not set
+    if (!finalData.bloom_level && finalData.cognitive_level) {
+      finalData.bloom_level = finalData.cognitive_level;
+    }
+
+    // Ensure topic has a value (required NOT NULL in DB)
+    if (!finalData.topic) {
+      finalData.topic = finalData.subject_description || finalData.subject_code || finalData.category || "General";
+    }
+
+    // Ensure choices is proper JSON for the DB
+    if (finalData.question_type === "mcq" && typeof finalData.choices === "object" && !Array.isArray(finalData.choices)) {
+      // Already an object like {A, B, C, D} - keep as is
+    } else if (finalData.question_type === "true_false") {
+      finalData.choices = { A: "True", B: "False" } as any;
+    } else if (["identification", "essay", "fill_blank"].includes(finalData.question_type)) {
+      finalData.choices = null as any;
+    }
 
     if (editingId) updateMutation.mutate({ id: editingId, data: finalData });
     else createMutation.mutate(finalData);
@@ -510,17 +552,135 @@ export default function QuestionBankManager() {
           </div>
         </div>
 
-        {/* Row 3: Question Text (large) */}
+        {/* Row 3: Question Type */}
+        <div className="space-y-2">
+          <Label>Question Type</Label>
+          <RadioGroup
+            value={formData.question_type}
+            onValueChange={(v) => {
+              const type = v as typeof formData.question_type;
+              let choices: any[] = [];
+              let correct_answer = "";
+              if (type === "mcq") {
+                choices = { A: "", B: "", C: "", D: "" } as any;
+              } else if (type === "true_false") {
+                choices = { A: "True", B: "False" } as any;
+              }
+              setFormData({ ...formData, question_type: type, choices, correct_answer });
+            }}
+            className="flex flex-wrap gap-4 pt-1"
+          >
+            {[
+              { value: "mcq", label: "Multiple Choice" },
+              { value: "true_false", label: "True/False" },
+              { value: "identification", label: "Identification" },
+              { value: "essay", label: "Essay" },
+              { value: "fill_blank", label: "Fill in the Blank" },
+            ].map((opt) => (
+              <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                <RadioGroupItem value={opt.value} />
+                <span className="text-sm">{opt.label}</span>
+              </label>
+            ))}
+          </RadioGroup>
+        </div>
+
+        {/* Row 4: Question Text */}
         <div className="space-y-2">
           <Label>Question Text</Label>
           <Textarea
             value={formData.question_text}
             onChange={(e) => setFormData({ ...formData, question_text: e.target.value })}
-            rows={5}
-            placeholder="Enter question text..."
-            className="min-h-[120px]"
+            rows={formData.question_type === "essay" ? 8 : 5}
+            placeholder={
+              formData.question_type === "essay"
+                ? "Enter essay prompt or question..."
+                : formData.question_type === "fill_blank"
+                ? "Enter question with ___ for the blank..."
+                : "Enter question text..."
+            }
+            className={formData.question_type === "essay" ? "min-h-[180px]" : "min-h-[120px]"}
           />
         </div>
+
+        {/* Topic field */}
+        <div className="space-y-2">
+          <Label>Topic</Label>
+          <Input
+            placeholder="Enter topic (e.g., Data Structures, Programming Basics)"
+            value={formData.topic}
+            onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
+          />
+        </div>
+
+        {/* Conditional: MCQ choices & correct answer */}
+        {formData.question_type === "mcq" && (
+          <div className="space-y-3">
+            <Label>Answer Choices</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {["A", "B", "C", "D"].map((key) => (
+                <div key={key} className="flex items-center gap-2">
+                  <span className="text-sm font-semibold w-6">{key}.</span>
+                  <Input
+                    placeholder={`Option ${key}`}
+                    value={(formData.choices as any)?.[key] || ""}
+                    onChange={(e) => {
+                      const updated = { ...(formData.choices as any || {}), [key]: e.target.value };
+                      setFormData({ ...formData, choices: updated });
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2">
+              <Label>Correct Answer</Label>
+              <Select
+                value={formData.correct_answer || undefined}
+                onValueChange={(v) => setFormData({ ...formData, correct_answer: v })}
+              >
+                <SelectTrigger className="w-40"><SelectValue placeholder="Select answer" /></SelectTrigger>
+                <SelectContent>
+                  {["A", "B", "C", "D"].map((k) => (
+                    <SelectItem key={k} value={k}>{k}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
+        {/* Conditional: True/False correct answer */}
+        {formData.question_type === "true_false" && (
+          <div className="space-y-2">
+            <Label>Correct Answer</Label>
+            <RadioGroup
+              value={formData.correct_answer}
+              onValueChange={(v) => setFormData({ ...formData, correct_answer: v })}
+              className="flex gap-6 pt-1"
+            >
+              <label className="flex items-center gap-2 cursor-pointer">
+                <RadioGroupItem value="True" />
+                <span className="text-sm">True</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <RadioGroupItem value="False" />
+                <span className="text-sm">False</span>
+              </label>
+            </RadioGroup>
+          </div>
+        )}
+
+        {/* Conditional: Identification / Fill in the Blank correct answer */}
+        {(formData.question_type === "identification" || formData.question_type === "fill_blank") && (
+          <div className="space-y-2">
+            <Label>Correct Answer</Label>
+            <Input
+              placeholder={formData.question_type === "fill_blank" ? "Enter the word/phrase for the blank" : "Enter the correct answer"}
+              value={formData.correct_answer}
+              onChange={(e) => setFormData({ ...formData, correct_answer: e.target.value })}
+            />
+          </div>
+        )}
 
         {/* Row 4: Cognitive Domain (difficulty checkboxes) + Cognitive Level */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
