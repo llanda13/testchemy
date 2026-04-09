@@ -15,7 +15,7 @@ import {
   Brain, Send, Loader2, User, Trash2, Sparkles, FileQuestion,
   Tag, BarChart3, BookOpen, CheckCircle, AlertTriangle, Save,
   PlusCircle, Search, Wand2, ArrowRight, Copy, RefreshCw,
-  MessageSquare, Clock, Plus
+  MessageSquare, Clock, Plus, FileText, Target, Lightbulb, ListChecks
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
