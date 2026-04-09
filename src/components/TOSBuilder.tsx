@@ -67,6 +67,7 @@ export const TOSBuilder = ({ onBack }: TOSBuilderProps) => {
   
   const [topics, setTopics] = useState([{ topic: "", hours: 0 }]);
   const [tosMatrix, setTosMatrix] = useState<CanonicalTOSMatrix | null>(null);
+  const [autoGeneratePending, setAutoGeneratePending] = useState(false);
   const [showMatrix, setShowMatrix] = useState(false);
   const [sufficiencyAnalysis, setSufficiencyAnalysis] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
