@@ -1215,7 +1215,7 @@ CRITICAL RULES:
   let generatedQuestions;
   try {
     const content = aiResponse.choices[0].message.content;
-    generatedQuestions = JSON.parse(content);
+    generatedQuestions = extractJSON(content);
   } catch (parseError) {
     console.error('Failed to parse MCQ response:', parseError);
     throw new Error('Invalid MCQ response format');
@@ -1440,7 +1440,7 @@ Return ONLY valid JSON:
   let generatedQuestions;
   try {
     const content = aiResponse.choices[0].message.content;
-    generatedQuestions = JSON.parse(content);
+    generatedQuestions = extractJSON(content);
   } catch (parseError) {
     console.error('Failed to parse T/F response:', parseError);
     throw new Error('Invalid T/F response format');
@@ -1563,7 +1563,7 @@ Return ONLY valid JSON:
   let generatedQuestions;
   try {
     const content = aiResponse.choices[0].message.content;
-    generatedQuestions = JSON.parse(content);
+    generatedQuestions = extractJSON(content);
   } catch (parseError) {
     console.error('Failed to parse Short Answer response:', parseError);
     throw new Error('Invalid Short Answer response format');
@@ -1679,7 +1679,7 @@ Return ONLY valid JSON:
   let generatedQuestions;
   try {
     const content = aiResponse.choices[0].message.content;
-    generatedQuestions = JSON.parse(content);
+    generatedQuestions = extractJSON(content);
   } catch (parseError) {
     console.error('Failed to parse Essay response:', parseError);
     throw new Error('Invalid Essay response format');
