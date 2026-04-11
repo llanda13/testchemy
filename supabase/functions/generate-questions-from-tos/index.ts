@@ -741,9 +741,9 @@ async function fillSlotsWithAI(
 ): Promise<Slot[]> {
   if (slots.length === 0) return [];
 
-  const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-  if (!openAIApiKey) {
-    console.error('OpenAI API key not configured');
+  const aiApiKey = Deno.env.get('LOVABLE_API_KEY') || Deno.env.get('OPENAI_API_KEY');
+  if (!aiApiKey) {
+    console.error('No AI API key configured (LOVABLE_API_KEY or OPENAI_API_KEY)');
     return slots.map(s => ({ ...s, filled: false }));
   }
 
