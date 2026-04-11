@@ -1178,7 +1178,7 @@ CRITICAL RULES:
         },
         { role: 'user', content: prompt }
       ],
-      response_format: { type: "json_object" },
+
       temperature: 0.6,
       max_tokens: 4000
     }),
@@ -1403,7 +1403,7 @@ Return ONLY valid JSON:
         },
         { role: 'user', content: prompt }
       ],
-      response_format: { type: "json_object" },
+
       temperature: 0.3,
       max_tokens: 2000
     }),
@@ -1526,7 +1526,7 @@ Return ONLY valid JSON:
         },
         { role: 'user', content: prompt }
       ],
-      response_format: { type: "json_object" },
+
       temperature: 0.3,
       max_tokens: 2000
     }),
@@ -1642,7 +1642,7 @@ Return ONLY valid JSON:
         },
         { role: 'user', content: prompt }
       ],
-      response_format: { type: "json_object" },
+
       temperature: 0.4,
       max_tokens: 3000
     }),
