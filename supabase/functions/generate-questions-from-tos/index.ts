@@ -794,7 +794,7 @@ async function fillSlotsWithAI(
           topic,
           bloom,
           intents,
-          openAIApiKey,
+          aiApiKey,
           registry
         );
 
@@ -1155,14 +1155,14 @@ Return ONLY valid JSON with COMPLETE content:
 
   console.log(`🤖 Generating ${intents.length} MCQ questions for ${topic}/${bloom}`);
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'google/gemini-3-flash-preview',
       messages: [
         {
           role: 'system',
@@ -1388,14 +1388,14 @@ Return ONLY valid JSON:
 
   console.log(`🤖 Generating ${intents.length} T/F questions for ${topic}/${bloom}`);
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'google/gemini-3-flash-preview',
       messages: [
         {
           role: 'system',
@@ -1511,14 +1511,14 @@ Return ONLY valid JSON:
 
   console.log(`🤖 Generating ${intents.length} Short Answer questions for ${topic}/${bloom}`);
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'google/gemini-3-flash-preview',
       messages: [
         {
           role: 'system',
@@ -1627,14 +1627,14 @@ Return ONLY valid JSON:
 
   console.log(`🤖 Generating ${intents.length} Essay questions for ${topic}/${bloom}`);
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'google/gemini-3-flash-preview',
       messages: [
         {
           role: 'system',
@@ -1924,9 +1924,9 @@ serve(async (req) => {
       console.log(`   🎯 Generating ${slotsToFill.length} repair questions...`);
       
       // Generate repair questions using AI
-      const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-      if (!openAIApiKey) {
-        console.error(`   ❌ Cannot generate repair questions: OpenAI API key not configured`);
+      const aiRepairKey = Deno.env.get('LOVABLE_API_KEY') || Deno.env.get('OPENAI_API_KEY');
+      if (!aiRepairKey) {
+        console.error(`   ❌ Cannot generate repair questions: No AI API key configured`);
         break;
       }
       
