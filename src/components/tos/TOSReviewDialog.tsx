@@ -95,13 +95,13 @@ export function TOSReviewDialog({ open, onOpenChange, data, fileName, onConfirm 
         </DialogHeader>
 
         {warnings.length > 0 && (
-          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 space-y-1">
-            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-medium text-sm">
+          <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 space-y-1">
+            <div className="flex items-center gap-2 text-destructive font-medium text-sm">
               <AlertTriangle className="h-4 w-4" />
               Extraction Warnings
             </div>
             {warnings.map((w, i) => (
-              <p key={i} className="text-xs text-amber-600 dark:text-amber-500 ml-6">• {w}</p>
+              <p key={i} className="text-xs text-destructive/80 ml-6">• {w}</p>
             ))}
           </div>
         )}
