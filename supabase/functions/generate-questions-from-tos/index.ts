@@ -293,13 +293,34 @@ function expandTOSToSlots(distributions: TopicDistribution[], totalItems: number
       const count = dist.counts[bloom as keyof typeof dist.counts] as number;
       if (!count || count <= 0) continue;
 
-      // Distribute across difficulty levels
+      // Distribute across difficulty levels using largest-remainder method to preserve exact count
       const { easy, average, difficult } = dist.counts.difficulty;
       const totalDiff = Math.max(1, easy + average + difficult);
       
-      const easyCount = Math.round(count * (easy / totalDiff));
-      const averageCount = Math.round(count * (average / totalDiff));
-      const difficultCount = Math.max(0, count - easyCount - averageCount);
+      // Use largest-remainder method (Hamilton's method) to avoid rounding errors
+      const rawEasy = count * (easy / totalDiff);
+      const rawAverage = count * (average / totalDiff);
+      const rawDifficult = count * (difficult / totalDiff);
+      
+      let easyCount = Math.floor(rawEasy);
+      let averageCount = Math.floor(rawAverage);
+      let difficultCount = Math.floor(rawDifficult);
+      
+      // Distribute remainders to reach exact count
+      let remainder = count - easyCount - averageCount - difficultCount;
+      const remainders = [
+        { key: 'easy', frac: rawEasy - easyCount },
+        { key: 'average', frac: rawAverage - averageCount },
+        { key: 'difficult', frac: rawDifficult - difficultCount }
+      ].sort((a, b) => b.frac - a.frac);
+      
+      for (const r of remainders) {
+        if (remainder <= 0) break;
+        if (r.key === 'easy') easyCount++;
+        else if (r.key === 'average') averageCount++;
+        else difficultCount++;
+        remainder--;
+      }
 
       const difficulties = [
         { level: 'easy', count: easyCount },
@@ -390,6 +411,26 @@ function expandTOSToSlots(distributions: TopicDistribution[], totalItems: number
     }
   }
 
+  // ============= SLOT COUNT ENFORCEMENT =============
+  // If rounding caused fewer slots than totalItems, add MCQ slots to fill
+  while (slots.length < totalItems) {
+    const dist = distributions[slots.length % distributions.length];
+    slots.push({
+      id: `slot_${slotId++}`,
+      topic: dist.topic,
+      bloomLevel: 'understanding',
+      difficulty: 'average',
+      knowledgeDimension: 'conceptual',
+      questionType: 'mcq',
+      points: POINTS.mcq,
+      filled: false
+    });
+  }
+  // If rounding created more slots than totalItems, trim
+  if (slots.length > totalItems) {
+    slots.length = totalItems;
+  }
+
   const typeCounts = {
     mcq: slots.filter(s => s.questionType === 'mcq').length,
     true_false: slots.filter(s => s.questionType === 'true_false').length,
@@ -397,7 +438,7 @@ function expandTOSToSlots(distributions: TopicDistribution[], totalItems: number
     essay: slots.filter(s => s.questionType === 'essay').length
   };
   
-  console.log(`📋 Expanded TOS into ${slots.length} slots:`);
+  console.log(`📋 Expanded TOS into ${slots.length} slots (required: ${totalItems}):`);
   console.log(`   MCQ: ${typeCounts.mcq}`);
   console.log(`   ${secondaryType === 'true_false' ? 'T/F' : 'Short Answer'}: ${secondaryType === 'true_false' ? typeCounts.true_false : typeCounts.short_answer}`);
   console.log(`   Essay: ${typeCounts.essay}`);
