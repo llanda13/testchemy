@@ -76,6 +76,26 @@ interface GenerationRegistry {
 
 // ============= CONSTANTS =============
 
+/**
+ * Extract JSON from AI response that may be wrapped in markdown code blocks
+ */
+function extractJSON(text: string): any {
+  // Try direct parse first
+  try { return JSON.parse(text); } catch {}
+  // Strip markdown code blocks
+  const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (match) {
+    try { return JSON.parse(match[1].trim()); } catch {}
+  }
+  // Try finding first { to last }
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    try { return JSON.parse(text.slice(start, end + 1)); } catch {}
+  }
+  throw new Error('Could not extract JSON from AI response');
+}
+
 const BLOOM_LEVELS = ['remembering', 'understanding', 'applying', 'analyzing', 'evaluating', 'creating'];
 
 const BLOOM_KNOWLEDGE_MAPPING: Record<string, string> = {
